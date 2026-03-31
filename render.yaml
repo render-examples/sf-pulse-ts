@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: sf-pulse
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: NODE_ENV=production node dist/index.cjs
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "10000"
+    plan: free
+    healthCheckPath: /api/last-updated

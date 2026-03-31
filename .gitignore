@@ -1,0 +1,1 @@
+node_modules/\nsqlite.db\ndist/\n*.db-journal\n*.db-wal
