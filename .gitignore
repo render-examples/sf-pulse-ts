@@ -1,1 +1,4 @@
 node_modules/\nsqlite.db\ndist/\n*.db-journal\n*.db-wal
+sqlite.db
+sqlite.db-shm
+sqlite.db-wal
