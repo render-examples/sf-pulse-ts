@@ -1,32 +1,27 @@
-import { Switch, Route, Router } from "wouter";
-import { useHashLocation } from "wouter/use-hash-location";
-import { QueryClientProvider } from "@tanstack/react-query";
-import { queryClient } from "./lib/queryClient";
-import { Toaster } from "@/components/ui/toaster";
-import Home from "./pages/home";
-import NotFound from "./pages/not-found";
-import { ThemeProvider } from "./components/theme-provider";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import Home from "./pages/Home";
 
-function AppRouter() {
-  return (
-    <Router hook={useHashLocation}>
-      <Switch>
-        <Route path="/" component={Home} />
-        <Route component={NotFound} />
-      </Switch>
-    </Router>
-  );
+async function defaultQueryFn({ queryKey }: { queryKey: readonly unknown[] }) {
+  const url = queryKey[0] as string;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json();
 }
 
-function App() {
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      queryFn: defaultQueryFn,
+      staleTime: 5 * 60 * 1000,
+      retry: 1,
+    },
+  },
+});
+
+export default function App() {
   return (
-    <ThemeProvider>
-      <QueryClientProvider client={queryClient}>
-        <AppRouter />
-        <Toaster />
-      </QueryClientProvider>
-    </ThemeProvider>
+    <QueryClientProvider client={queryClient}>
+      <Home />
+    </QueryClientProvider>
   );
 }
-
-export default App;

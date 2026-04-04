@@ -1,4 +1,8 @@
-node_modules/\nsqlite.db\ndist/\n*.db-journal\n*.db-wal
-sqlite.db
-sqlite.db-shm
-sqlite.db-wal
+node_modules/
+dist/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+.env
+.env.local

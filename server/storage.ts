@@ -1,138 +1,128 @@
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import Database from "better-sqlite3";
-import { eq } from "drizzle-orm";
-import {
-  restaurants,
-  events,
-  pushSubscriptions,
-  dataUpdates,
-  type Restaurant,
-  type InsertRestaurant,
-  type Event,
-  type InsertEvent,
-  type PushSubscription,
-  type InsertPushSubscription,
-  type DataUpdate,
-  type InsertDataUpdate,
-} from "@shared/schema";
+import { query, queryOne, execute } from "./db.js";
 
-const sqlite = new Database("sqlite.db");
-sqlite.pragma("journal_mode = WAL");
-
-// Create tables if they don't exist
-sqlite.exec(`
-  CREATE TABLE IF NOT EXISTS restaurants (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    neighborhood TEXT NOT NULL,
-    cuisine TEXT NOT NULL,
-    address TEXT,
-    opened_date TEXT NOT NULL,
-    source_url TEXT,
-    added_at TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    location TEXT NOT NULL,
-    date TEXT NOT NULL,
-    time TEXT,
-    description TEXT,
-    source_url TEXT,
-    added_at TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS push_subscriptions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    endpoint TEXT NOT NULL UNIQUE,
-    keys TEXT NOT NULL,
-    created_at TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS data_updates (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    type TEXT NOT NULL,
-    item_name TEXT NOT NULL,
-    action TEXT NOT NULL,
-    timestamp TEXT NOT NULL
-  );
-`);
-
-export const db = drizzle(sqlite);
-
-export interface IStorage {
-  // Restaurants
-  getRestaurants(): Restaurant[];
-  addRestaurant(data: InsertRestaurant): Restaurant;
-  deleteRestaurant(id: number): void;
-  clearRestaurants(): void;
-
-  // Events
-  getEvents(): Event[];
-  addEvent(data: InsertEvent): Event;
-  deleteEvent(id: number): void;
-  clearEvents(): void;
-
-  // Push Subscriptions
-  getSubscriptions(): PushSubscription[];
-  addSubscription(data: InsertPushSubscription): PushSubscription;
-  removeSubscription(endpoint: string): void;
-
-  // Data Updates
-  getRecentUpdates(limit: number): DataUpdate[];
-  addDataUpdate(data: InsertDataUpdate): DataUpdate;
+export interface Restaurant {
+  id: number;
+  name: string;
+  neighborhood: string;
+  cuisine: string;
+  address: string | null;
+  opened_date: string;
+  source_url: string | null;
+  added_at: string;
 }
 
-export class SqliteStorage implements IStorage {
-  getRestaurants(): Restaurant[] {
-    return db.select().from(restaurants).all();
-  }
-
-  addRestaurant(data: InsertRestaurant): Restaurant {
-    return db.insert(restaurants).values(data).returning().get();
-  }
-
-  deleteRestaurant(id: number): void {
-    db.delete(restaurants).where(eq(restaurants.id, id)).run();
-  }
-
-  clearRestaurants(): void {
-    db.delete(restaurants).run();
-  }
-
-  getEvents(): Event[] {
-    return db.select().from(events).all();
-  }
-
-  addEvent(data: InsertEvent): Event {
-    return db.insert(events).values(data).returning().get();
-  }
-
-  deleteEvent(id: number): void {
-    db.delete(events).where(eq(events.id, id)).run();
-  }
-
-  clearEvents(): void {
-    db.delete(events).run();
-  }
-
-  getSubscriptions(): PushSubscription[] {
-    return db.select().from(pushSubscriptions).all();
-  }
-
-  addSubscription(data: InsertPushSubscription): PushSubscription {
-    return db.insert(pushSubscriptions).values(data).returning().get();
-  }
-
-  removeSubscription(endpoint: string): void {
-    db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint)).run();
-  }
-
-  getRecentUpdates(limit: number): DataUpdate[] {
-    return db.select().from(dataUpdates).all().slice(-limit).reverse();
-  }
-
-  addDataUpdate(data: InsertDataUpdate): DataUpdate {
-    return db.insert(dataUpdates).values(data).returning().get();
-  }
+export interface Event {
+  id: number;
+  title: string;
+  location: string;
+  date: string;
+  time: string | null;
+  description: string | null;
+  source_url: string | null;
+  added_at: string;
 }
 
-export const storage = new SqliteStorage();
+export interface PushSubscription {
+  id: number;
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+  created_at: string;
+}
+
+export interface DataUpdate {
+  id: number;
+  type: string;
+  item_name: string;
+  action: string;
+  occurred_at: string;
+}
+
+// ── Restaurants ──────────────────────────────────────────────────────────────
+
+export function getRestaurants(): Promise<Restaurant[]> {
+  return query<Restaurant>(
+    "SELECT * FROM restaurants ORDER BY added_at DESC"
+  );
+}
+
+export async function addRestaurant(r: Omit<Restaurant, "id" | "added_at">): Promise<Restaurant> {
+  return queryOne<Restaurant>(
+    `INSERT INTO restaurants (name, neighborhood, cuisine, address, opened_date, source_url)
+     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+    [r.name, r.neighborhood, r.cuisine, r.address ?? null, r.opened_date, r.source_url ?? null]
+  ) as Promise<Restaurant>;
+}
+
+export async function clearRestaurants(): Promise<void> {
+  await execute("DELETE FROM restaurants");
+}
+
+export async function deleteRestaurant(id: number): Promise<void> {
+  await execute("DELETE FROM restaurants WHERE id=$1", [id]);
+}
+
+// ── Events ───────────────────────────────────────────────────────────────────
+
+export function getEvents(): Promise<Event[]> {
+  return query<Event>("SELECT * FROM events ORDER BY added_at DESC");
+}
+
+export async function addEvent(e: Omit<Event, "id" | "added_at">): Promise<Event> {
+  return queryOne<Event>(
+    `INSERT INTO events (title, location, date, time, description, source_url)
+     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+    [e.title, e.location, e.date, e.time ?? null, e.description ?? null, e.source_url ?? null]
+  ) as Promise<Event>;
+}
+
+export async function clearEvents(): Promise<void> {
+  await execute("DELETE FROM events");
+}
+
+export async function deleteEvent(id: number): Promise<void> {
+  await execute("DELETE FROM events WHERE id=$1", [id]);
+}
+
+// ── Push subscriptions ────────────────────────────────────────────────────────
+
+export function getSubscriptions(): Promise<PushSubscription[]> {
+  return query<PushSubscription>("SELECT * FROM push_subscriptions");
+}
+
+export async function addSubscription(
+  endpoint: string,
+  keys: { p256dh: string; auth: string }
+): Promise<PushSubscription> {
+  return queryOne<PushSubscription>(
+    `INSERT INTO push_subscriptions (endpoint, keys)
+     VALUES ($1,$2)
+     ON CONFLICT (endpoint) DO UPDATE SET keys=EXCLUDED.keys
+     RETURNING *`,
+    [endpoint, JSON.stringify(keys)]
+  ) as Promise<PushSubscription>;
+}
+
+export async function removeSubscription(endpoint: string): Promise<void> {
+  await execute("DELETE FROM push_subscriptions WHERE endpoint=$1", [endpoint]);
+}
+
+// ── Data updates ──────────────────────────────────────────────────────────────
+
+export function getRecentUpdates(limit = 50): Promise<DataUpdate[]> {
+  return query<DataUpdate>(
+    "SELECT * FROM data_updates ORDER BY occurred_at DESC LIMIT $1",
+    [limit]
+  );
+}
+
+export async function recordUpdate(
+  type: "restaurant" | "event",
+  item_name: string,
+  action: "added" | "removed" | "updated"
+): Promise<DataUpdate> {
+  return queryOne<DataUpdate>(
+    `INSERT INTO data_updates (type, item_name, action)
+     VALUES ($1,$2,$3) RETURNING *`,
+    [type, item_name, action]
+  ) as Promise<DataUpdate>;
+}

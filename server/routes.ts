@@ -1,11 +1,16 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import webpush from "web-push";
-import { storage } from "./storage";
+import * as storage from "./storage.js";
+import { addClient, broadcast } from "./sse.js";
+import { seedDatabase } from "./seed.js";
 
-// Generate VAPID keys at startup if not set
-const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || "BBkwZRCOJzKrYlx_-1XEbGaNmgofTxAaaIRWZzEx8MrA-C52lj6uP4Qv3Eheq3l_2GWXDNZltVpprFNG1N1QAG4";
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "tjnOZ1tYY6cLxXallojS1TP7iVIopu4ogMD6XIePbsI";
+const VAPID_PUBLIC_KEY =
+  process.env.VAPID_PUBLIC_KEY ||
+  "BBkwZRCOJzKrYlx_-1XEbGaNmgofTxAaaIRWZzEx8MrA-C52lj6uP4Qv3Eheq3l_2GWXDNZltVpprFNG1N1QAG4";
+const VAPID_PRIVATE_KEY =
+  process.env.VAPID_PRIVATE_KEY ||
+  "tjnOZ1tYY6cLxXallojS1TP7iVIopu4ogMD6XIePbsI";
 
 webpush.setVapidDetails(
   "mailto:sf-pulse@example.com",
@@ -13,64 +18,142 @@ webpush.setVapidDetails(
   VAPID_PRIVATE_KEY
 );
 
-export function registerRoutes(server: Server, app: Express) {
-  // Get all restaurants
-  app.get("/api/restaurants", (_req, res) => {
-    const data = storage.getRestaurants();
-    res.json(data);
+async function pushToAll(title: string, body: string): Promise<void> {
+  const subs = await storage.getSubscriptions();
+  const sends = subs.map((sub) =>
+    webpush
+      .sendNotification(
+        { endpoint: sub.endpoint, keys: sub.keys },
+        JSON.stringify({ title, body })
+      )
+      .catch(() => {
+        // Remove dead subscriptions silently
+        storage.removeSubscription(sub.endpoint);
+      })
+  );
+  await Promise.allSettled(sends);
+}
+
+export function registerRoutes(server: Server, app: Express): void {
+  // ── SSE stream ─────────────────────────────────────────────────────────────
+  app.get("/api/events-stream", (req, res) => {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no"); // Nginx/Render: disable proxy buffering
+    res.flushHeaders();
+    // Heartbeat every 25s to prevent idle disconnects
+    const hb = setInterval(() => res.write(": ping\n\n"), 25_000);
+    res.on("close", () => clearInterval(hb));
+    addClient(res);
   });
 
-  // Get all events
-  app.get("/api/events", (_req, res) => {
-    const data = storage.getEvents();
-    res.json(data);
+  // ── Restaurants ────────────────────────────────────────────────────────────
+  app.get("/api/restaurants", async (_req, res) => {
+    res.json(await storage.getRestaurants());
   });
 
-  // Get VAPID public key
+  app.delete("/api/restaurants/:id", async (req, res) => {
+    await storage.deleteRestaurant(Number(req.params.id));
+    broadcast("restaurants", { action: "refresh" });
+    res.json({ ok: true });
+  });
+
+  // ── Events ─────────────────────────────────────────────────────────────────
+  app.get("/api/events", async (_req, res) => {
+    res.json(await storage.getEvents());
+  });
+
+  app.delete("/api/events/:id", async (req, res) => {
+    await storage.deleteEvent(Number(req.params.id));
+    broadcast("events", { action: "refresh" });
+    res.json({ ok: true });
+  });
+
+  // ── Cron trigger (called by Render cron job) ───────────────────────────────
+  // Protected by a shared secret so it can't be triggered arbitrarily.
+  app.post("/api/cron/refresh", async (req, res) => {
+    const secret = process.env.CRON_SECRET;
+    if (secret && req.headers["x-cron-secret"] !== secret) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const { restaurants = [], events = [] } = req.body as {
+      restaurants: Omit<storage.Restaurant, "id" | "added_at">[];
+      events: Omit<storage.Event, "id" | "added_at">[];
+    };
+
+    const newRestaurants: string[] = [];
+    const newEvents: string[] = [];
+
+    for (const r of restaurants) {
+      const added = await storage.addRestaurant(r);
+      await storage.recordUpdate("restaurant", added.name, "added");
+      newRestaurants.push(added.name);
+    }
+
+    for (const e of events) {
+      const added = await storage.addEvent(e);
+      await storage.recordUpdate("event", added.title, "added");
+      newEvents.push(added.title);
+    }
+
+    if (newRestaurants.length > 0 || newEvents.length > 0) {
+      broadcast("restaurants", { action: "refresh" });
+      broadcast("events", { action: "refresh" });
+
+      const lines: string[] = [];
+      if (newRestaurants.length)
+        lines.push(`${newRestaurants.length} new restaurant${newRestaurants.length > 1 ? "s" : ""}: ${newRestaurants.join(", ")}`);
+      if (newEvents.length)
+        lines.push(`${newEvents.length} new event${newEvents.length > 1 ? "s" : ""}: ${newEvents.join(", ")}`);
+
+      await pushToAll("SF Pulse update", lines.join(" · "));
+    }
+
+    res.json({ added: { restaurants: newRestaurants, events: newEvents } });
+  });
+
+  // ── Seed trigger (one-time data load) ─────────────────────────────────────
+  app.post("/api/cron/seed", async (req, res) => {
+    const secret = process.env.CRON_SECRET;
+    if (secret && req.headers["x-cron-secret"] !== secret) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    await seedDatabase();
+    broadcast("restaurants", { action: "refresh" });
+    broadcast("events", { action: "refresh" });
+    res.json({ ok: true });
+  });
+
+  // ── Push subscriptions ─────────────────────────────────────────────────────
   app.get("/api/push/vapid-key", (_req, res) => {
     res.json({ key: VAPID_PUBLIC_KEY });
   });
 
-  // Subscribe to push notifications
-  app.post("/api/push/subscribe", (req, res) => {
-    try {
-      const { endpoint, keys } = req.body;
-      if (!endpoint || !keys) {
-        return res.status(400).json({ error: "Missing endpoint or keys" });
-      }
-      const sub = storage.addSubscription({
-        endpoint,
-        keys: JSON.stringify(keys),
-        createdAt: new Date().toISOString(),
-      });
-      res.json(sub);
-    } catch (e: any) {
-      // Unique constraint violation = already subscribed
-      if (e.message?.includes("UNIQUE")) {
-        return res.json({ message: "Already subscribed" });
-      }
-      res.status(500).json({ error: e.message });
+  app.post("/api/push/subscribe", async (req, res) => {
+    const { endpoint, keys } = req.body;
+    if (!endpoint || !keys?.p256dh || !keys?.auth) {
+      return res.status(400).json({ error: "Missing endpoint or keys" });
     }
+    const sub = await storage.addSubscription(endpoint, keys);
+    res.json(sub);
   });
 
-  // Unsubscribe
-  app.post("/api/push/unsubscribe", (req, res) => {
+  app.post("/api/push/unsubscribe", async (req, res) => {
     const { endpoint } = req.body;
     if (!endpoint) return res.status(400).json({ error: "Missing endpoint" });
-    storage.removeSubscription(endpoint);
-    res.json({ message: "Unsubscribed" });
+    await storage.removeSubscription(endpoint);
+    res.json({ ok: true });
   });
 
-  // Get recent data updates
-  app.get("/api/updates", (_req, res) => {
-    const updates = storage.getRecentUpdates(50);
-    res.json(updates);
+  // ── Misc ───────────────────────────────────────────────────────────────────
+  app.get("/api/updates", async (_req, res) => {
+    res.json(await storage.getRecentUpdates());
   });
 
-  // Get last update timestamp
-  app.get("/api/last-updated", (_req, res) => {
-    const updates = storage.getRecentUpdates(1);
-    const lastUpdated = updates.length > 0 ? updates[0].timestamp : null;
-    res.json({ lastUpdated });
+  app.get("/api/last-updated", async (_req, res) => {
+    const updates = await storage.getRecentUpdates(1);
+    res.json({ lastUpdated: updates[0]?.occurred_at ?? null });
   });
 }

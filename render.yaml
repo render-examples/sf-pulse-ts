@@ -1,13 +1,51 @@
+databases:
+  - name: sf-pulse-db
+    databaseName: sfpulse
+    user: sfpulse
+    plan: starter
+
 services:
   - type: web
     name: sf-pulse
     runtime: node
-    buildCommand: npm install && npm run build
-    startCommand: NODE_ENV=production node dist/index.cjs
+    plan: starter
+    buildCommand: npm ci && npm run build
+    startCommand: node dist/index.cjs
+    healthCheckPath: /api/last-updated
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: "10000"
-    plan: free
-    healthCheckPath: /api/last-updated
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sf-pulse-db
+          property: connectionString
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: CRON_SECRET
+        generateValue: true
+
+  - type: cron
+    name: sf-pulse-daily
+    runtime: node
+    plan: starter
+    # 7:00 AM PDT = 14:00 UTC
+    schedule: "0 14 * * *"
+    buildCommand: npm ci
+    startCommand: node scripts/cron-refresh.cjs
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sf-pulse-db
+          property: connectionString
+      - key: CRON_SECRET
+        fromService:
+          name: sf-pulse
+          type: web
+          envVarKey: CRON_SECRET
+      - key: APP_URL
+        fromService:
+          name: sf-pulse
+          type: web
+          property: host
