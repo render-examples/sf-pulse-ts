@@ -341,6 +341,7 @@ td {
 .colNeighborhood { display: table-cell; }
 .colCuisine { display: table-cell; }
 .colTime { display: table-cell; }
+.colDiet { display: table-cell; white-space: nowrap; }
 
 @media (max-width: 700px) {
   .colCuisine, .colTime { display: none; }
@@ -348,6 +349,42 @@ td {
 
 @media (max-width: 480px) {
   .colNeighborhood { display: none; }
+}
+
+/* ─── Menu link ──────────────────────────────────────────────────────────── */
+.menuLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--accent);
+  text-decoration: none;
+  opacity: .8;
+  transition: opacity .15s;
+}
+.menuLink:hover { opacity: 1; text-decoration: underline; }
+
+/* ─── Dietary badges ─────────────────────────────────────────────────────── */
+.dietaryBadges {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.dietaryBadge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 4px;
+  border: 1px solid;
+  border-radius: 3px;
+  letter-spacing: .02em;
+}
+
+.dietaryInferred {
+  opacity: .45;
 }
 
 /* ─── Empty state ─────────────────────────────────────────────────────────── */

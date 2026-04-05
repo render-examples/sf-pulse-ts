@@ -78,7 +78,7 @@ export function registerRoutes(server: Server, app: Express, pool?: Pool): void 
     }
 
     const { restaurants = [], events = [] } = req.body as {
-      restaurants: Omit<storage.Restaurant, "id" | "added_at">[];
+      restaurants: storage.NewRestaurant[];
       events: Omit<storage.Event, "id" | "added_at">[];
     };
 
@@ -111,6 +111,30 @@ export function registerRoutes(server: Server, app: Express, pool?: Pool): void 
     }
 
     res.json({ added: { restaurants: newRestaurants, events: newEvents } });
+  });
+
+  // ── Menu discovery (called by cron job) ───────────────────────────────────
+  app.get("/api/restaurants/needing-menu-check", async (req, res) => {
+    const secret = process.env.CRON_SECRET;
+    if (secret && req.headers["x-cron-secret"] !== secret) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const restaurants = await storage.getRestaurantsNeedingMenuCheck(pool);
+    res.json(restaurants.map((r) => ({ id: r.id, name: r.name })));
+  });
+
+  app.put("/api/restaurants/:id/menu", async (req, res) => {
+    const secret = process.env.CRON_SECRET;
+    if (secret && req.headers["x-cron-secret"] !== secret) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const { menuUrl, dietaryFlags } = req.body as {
+      menuUrl: string | null;
+      dietaryFlags: storage.DietaryFlags | null;
+    };
+    await storage.updateRestaurantMenu(Number(req.params.id), menuUrl, dietaryFlags, pool);
+    broadcast("restaurants", { action: "refresh" });
+    res.json({ ok: true });
   });
 
   // ── Push subscriptions ─────────────────────────────────────────────────────

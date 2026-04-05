@@ -48,7 +48,7 @@ describe("migrate()", () => {
     const { rows } = await pool.query<{ version: string }>(
       "SELECT version FROM schema_migrations ORDER BY version"
     );
-    assert.deepEqual(rows.map((r) => r.version), ["0001_initial"]);
+    assert.deepEqual(rows.map((r) => r.version), ["0001_initial", "0002_menu_dietary"]);
   });
 
   it("is idempotent — running twice skips already-applied migrations", async () => {
@@ -57,7 +57,7 @@ describe("migrate()", () => {
     await migrate(pool, MIGRATIONS_DIR);
 
     const { rows } = await pool.query("SELECT COUNT(*)::int AS n FROM schema_migrations");
-    assert.equal((rows[0] as { n: number }).n, 1);
+    assert.equal((rows[0] as { n: number }).n, 2);
   });
 
   it("rolls back on a failing migration and re-throws", async () => {

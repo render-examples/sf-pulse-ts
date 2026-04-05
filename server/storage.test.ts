@@ -22,7 +22,10 @@ import {
   removeSubscription,
   getRecentUpdates,
   recordUpdate,
+  getRestaurantsNeedingMenuCheck,
+  updateRestaurantMenu,
 } from "./storage.js";
+import type { DietaryFlags } from "./storage.js";
 
 // ── Restaurants ───────────────────────────────────────────────────────────────
 
@@ -201,5 +204,69 @@ describe("storage — data updates", () => {
     const rows = await getRecentUpdates(2, pool);
     assert.equal(rows.length, 2);
     assert.ok(rows[0].occurred_at >= rows[1].occurred_at);
+  });
+});
+
+// ── Menu / dietary ────────────────────────────────────────────────────────────
+
+describe("getRestaurantsNeedingMenuCheck()", () => {
+  let pool: PgPool;
+
+  before(async () => {
+    pool = await createTestDb();
+  });
+
+  it("returns opened restaurants with no menu_checked_at", async () => {
+    const restaurants = await getRestaurantsNeedingMenuCheck(pool);
+    assert.ok(restaurants.length > 0);
+    for (const r of restaurants) {
+      assert.ok(!r.opened_date.toLowerCase().includes("upcoming"),
+        `${r.name} should not be 'upcoming'`);
+    }
+  });
+
+  it("excludes upcoming restaurants", async () => {
+    const restaurants = await getRestaurantsNeedingMenuCheck(pool);
+    const names = restaurants.map((r: { name: string }) => r.name);
+    // "Maillards" is Spring 2026 (upcoming) in seed data
+    assert.ok(!names.includes("Maillards"), "should not include upcoming restaurants");
+  });
+});
+
+describe("updateRestaurantMenu()", () => {
+  let pool: PgPool;
+
+  before(async () => {
+    pool = await createTestDb();
+  });
+
+  it("sets menu_url, dietary_flags, and menu_checked_at", async () => {
+    const restaurants = await getRestaurants(pool);
+    const r = restaurants[0];
+    const flags: DietaryFlags = {
+      gluten_free: { available: true, confidence: "confirmed" },
+      vegan: { available: false, confidence: "inferred" },
+      vegetarian: { available: true, confidence: "inferred" },
+    };
+    await updateRestaurantMenu(r.id, "https://example.com/menu", flags, pool);
+
+    const updated = await getRestaurants(pool);
+    const u = updated.find((x) => x.id === r.id)!;
+    assert.equal(u.menu_url, "https://example.com/menu");
+    assert.ok(u.menu_checked_at !== null, "menu_checked_at should be set");
+    assert.equal(u.dietary_flags!.gluten_free.available, true);
+    assert.equal(u.dietary_flags!.gluten_free.confidence, "confirmed");
+  });
+
+  it("sets null menu_url and null dietary_flags", async () => {
+    const restaurants = await getRestaurants(pool);
+    const r = restaurants[0];
+    await updateRestaurantMenu(r.id, null, null, pool);
+
+    const updated = await getRestaurants(pool);
+    const u = updated.find((x) => x.id === r.id)!;
+    assert.equal(u.menu_url, null);
+    assert.equal(u.dietary_flags, null);
+    assert.ok(u.menu_checked_at !== null, "menu_checked_at should still be set");
   });
 });

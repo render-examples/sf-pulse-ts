@@ -1,6 +1,17 @@
 import type { Pool } from "pg";
 import { pool as defaultPool, query, queryOne, execute } from "./db.js";
 
+export interface DietaryFlag {
+  available: boolean;
+  confidence: "confirmed" | "inferred";
+}
+
+export interface DietaryFlags {
+  gluten_free: DietaryFlag;
+  vegan: DietaryFlag;
+  vegetarian: DietaryFlag;
+}
+
 export interface Restaurant {
   id: number;
   name: string;
@@ -9,6 +20,9 @@ export interface Restaurant {
   address: string | null;
   opened_date: string;
   source_url: string | null;
+  menu_url: string | null;
+  menu_checked_at: string | null;
+  dietary_flags: DietaryFlags | null;
   added_at: string;
 }
 
@@ -68,8 +82,10 @@ export function getRestaurants(pool?: Pool): Promise<Restaurant[]> {
   return q<Restaurant>("SELECT * FROM restaurants ORDER BY added_at DESC", [], pool);
 }
 
+export type NewRestaurant = Omit<Restaurant, "id" | "added_at" | "menu_url" | "menu_checked_at" | "dietary_flags">;
+
 export async function addRestaurant(
-  r: Omit<Restaurant, "id" | "added_at">,
+  r: NewRestaurant,
   pool?: Pool
 ): Promise<Restaurant> {
   return q1<Restaurant>(
@@ -164,4 +180,43 @@ export async function recordUpdate(
     [type, item_name, action],
     pool
   ) as Promise<DataUpdate>;
+}
+
+// ── Menu / dietary ────────────────────────────────────────────────────────────
+
+/**
+ * Restaurants that are eligible for a menu check:
+ * - Already opened (opened_date not containing 'upcoming')
+ * - Never checked OR last checked > 7 days ago
+ */
+export function getRestaurantsNeedingMenuCheck(pool?: Pool): Promise<Restaurant[]> {
+  return q<Restaurant>(
+    `SELECT * FROM restaurants
+     WHERE opened_date NOT ILIKE '%upcoming%'
+       AND (menu_checked_at IS NULL
+            OR menu_checked_at < NOW() - INTERVAL '7 days')
+     ORDER BY menu_checked_at ASC NULLS FIRST`,
+    [],
+    pool
+  );
+}
+
+/**
+ * Update a restaurant's menu URL, dietary flags, and mark when checked.
+ */
+export async function updateRestaurantMenu(
+  id: number,
+  menuUrl: string | null,
+  dietaryFlags: DietaryFlags | null,
+  pool?: Pool
+): Promise<void> {
+  await exec(
+    `UPDATE restaurants
+     SET menu_url = $1,
+         dietary_flags = $2,
+         menu_checked_at = NOW()
+     WHERE id = $3`,
+    [menuUrl, dietaryFlags ? JSON.stringify(dietaryFlags) : null, id],
+    pool
+  );
 }

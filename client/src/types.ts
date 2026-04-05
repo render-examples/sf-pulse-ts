@@ -1,3 +1,14 @@
+export interface DietaryFlag {
+  available: boolean;
+  confidence: "confirmed" | "inferred";
+}
+
+export interface DietaryFlags {
+  gluten_free: DietaryFlag;
+  vegan: DietaryFlag;
+  vegetarian: DietaryFlag;
+}
+
 export interface Restaurant {
   id: number;
   name: string;
@@ -6,6 +17,9 @@ export interface Restaurant {
   address: string | null;
   opened_date: string;
   source_url: string | null;
+  menu_url: string | null;
+  menu_checked_at: string | null;
+  dietary_flags: DietaryFlags | null;
 }
 
 export interface SFEvent {

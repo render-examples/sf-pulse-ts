@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from "react";
 import s from "./Home.module.css";
-import type { Restaurant, SFEvent } from "../types";
+import type { Restaurant, SFEvent, DietaryFlags } from "../types";
 import { parseDate, todayUTC } from "../lib/dates";
 
 /* ── Types ─────────────────────────────────────────────────────────────── */
@@ -69,6 +69,48 @@ function IconPin() {
       <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
       <circle cx="12" cy="10" r="3" />
     </svg>
+  );
+}
+
+/* ── Dietary badges ─────────────────────────────────────────────────── */
+function IconMenu() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width: 12, height: 12, display: "inline", verticalAlign: "middle", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }}>
+      <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+      <line x1="4" y1="22" x2="4" y2="15" />
+    </svg>
+  );
+}
+
+const DIET_LABELS: { key: keyof DietaryFlags; symbol: string; label: string; color: string }[] = [
+  { key: "gluten_free", symbol: "GF", label: "Gluten-free", color: "#d4a017" },
+  { key: "vegan", symbol: "VG", label: "Vegan", color: "#4caf50" },
+  { key: "vegetarian", symbol: "V", label: "Vegetarian", color: "#66bb6a" },
+];
+
+function DietaryBadges({ flags }: { flags: DietaryFlags | null }) {
+  if (!flags) return null;
+
+  const badges = DIET_LABELS.filter((d) => flags[d.key].available);
+  if (badges.length === 0) return null;
+
+  return (
+    <span className={s.dietaryBadges}>
+      {badges.map((d) => {
+        const flag = flags[d.key];
+        const dimmed = flag.confidence === "inferred";
+        return (
+          <span
+            key={d.key}
+            className={`${s.dietaryBadge} ${dimmed ? s.dietaryInferred : ""}`}
+            style={{ borderColor: d.color, color: d.color }}
+            title={`${d.label}${dimmed ? " (likely)" : ""}`}
+          >
+            {d.symbol}
+          </span>
+        );
+      })}
+    </span>
   );
 }
 
@@ -216,6 +258,7 @@ function RestaurantTimeline({ data, filter }: { data: Restaurant[]; filter: stri
             <th>Name</th>
             <th className={s.colNeighborhood}>Neighborhood</th>
             <th className={s.colCuisine}>Cuisine</th>
+            <th className={s.colDiet}>Diet</th>
             <th>Opened</th>
           </tr>
         </thead>
@@ -224,7 +267,7 @@ function RestaurantTimeline({ data, filter }: { data: Restaurant[]; filter: stri
             if (row.kind === "today") {
               return (
                 <tr key="__today__" ref={todayRef} className={s.todayRow}>
-                  <td colSpan={4} className={s.todayCell}>
+                  <td colSpan={5} className={s.todayCell}>
                     <span className={s.todayLabel}>Today</span>
                   </td>
                 </tr>
@@ -234,7 +277,14 @@ function RestaurantTimeline({ data, filter }: { data: Restaurant[]; filter: stri
             return (
               <tr key={r.id}>
                 <td>
-                  <div className={s.cellPrimary}>{r.name}</div>
+                  <div className={s.cellPrimary}>
+                    {r.name}
+                    {r.menu_url && (
+                      <a href={r.menu_url} target="_blank" rel="noopener noreferrer" className={s.menuLink} title="View menu">
+                        <IconMenu /> Menu
+                      </a>
+                    )}
+                  </div>
                   {r.address && (
                     <div className={s.cellSub} style={{ display: "flex", alignItems: "center", gap: 3 }}>
                       <IconPin /> {r.address}
@@ -250,6 +300,9 @@ function RestaurantTimeline({ data, filter }: { data: Restaurant[]; filter: stri
                   <span className={s.badge}>{r.neighborhood}</span>
                 </td>
                 <td className={s.colCuisine} style={{ color: "var(--text-2)" }}>{r.cuisine}</td>
+                <td className={s.colDiet}>
+                  <DietaryBadges flags={r.dietary_flags} />
+                </td>
                 <td style={{ color: "var(--text-2)", whiteSpace: "nowrap", fontSize: 12 }}>{r.opened_date}</td>
               </tr>
             );

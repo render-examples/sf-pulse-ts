@@ -8,6 +8,7 @@
  */
 import { readFile, writeFile, mkdir } from "fs/promises";
 import { existsSync } from "fs";
+import type { DietaryFlags, DietaryFlag } from "../server/storage.js";
 
 const APP_URL = process.env.APP_URL
   ? `https://${process.env.APP_URL}`
@@ -101,6 +102,153 @@ export function extractEvents(text: string, existing: string[]): NewEvent[] {
   return results.slice(0, 10);
 }
 
+// ── Menu discovery & dietary parsing ─────────────────────────────────────────
+
+/**
+ * Extract href URLs from an HTML page (DuckDuckGo results or similar).
+ */
+export function extractUrls(html: string): string[] {
+  const pattern = /href="(https?:\/\/[^"]+)"/gi;
+  const urls: string[] = [];
+  let m;
+  while ((m = pattern.exec(html)) !== null) {
+    urls.push(m[1]);
+  }
+  return urls;
+}
+
+/**
+ * Search DuckDuckGo for the restaurant's menu and return candidate URLs,
+ * prioritizing: restaurant's own site > Yelp > Google Maps > other.
+ */
+export async function findMenuUrls(restaurantName: string): Promise<string[]> {
+  const queries = [
+    `"${restaurantName}" menu San Francisco`,
+    `"${restaurantName}" San Francisco site:yelp.com`,
+  ];
+
+  const allUrls: string[] = [];
+  for (const q of queries) {
+    try {
+      const html = await searchWeb(q);
+      allUrls.push(...extractUrls(html));
+    } catch {
+      // Search failed — skip silently
+    }
+  }
+
+  // Deduplicate and filter out search engine / tracking URLs
+  const seen = new Set<string>();
+  const filtered = allUrls.filter((u) => {
+    if (seen.has(u)) return false;
+    seen.add(u);
+    // Skip DuckDuckGo tracking redirects and common non-menu URLs
+    if (u.includes("duckduckgo.com")) return false;
+    if (u.includes("google.com/search")) return false;
+    return true;
+  });
+
+  // Sort: prefer Yelp menu pages, then any /menu path, then others
+  return filtered.sort((a, b) => {
+    const aScore = menuUrlScore(a);
+    const bScore = menuUrlScore(b);
+    return bScore - aScore;
+  });
+}
+
+function menuUrlScore(url: string): number {
+  const u = url.toLowerCase();
+  if (u.includes("/menu")) return 10;
+  if (u.includes("yelp.com")) return 5;
+  if (u.includes("google.com/maps")) return 3;
+  return 1;
+}
+
+/**
+ * Fetch a URL's text content with a timeout. Returns empty string on failure.
+ */
+export async function fetchPageText(url: string): Promise<string> {
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": "sf-pulse-cron/1.0" },
+      signal: AbortSignal.timeout(10_000),
+      redirect: "follow",
+    });
+    if (!res.ok) return "";
+    const html = await res.text();
+    return stripHtml(html);
+  } catch {
+    return "";
+  }
+}
+
+// ── Dietary keyword patterns ────────────────────────────────────────────────
+
+// Confirmed patterns: explicit labels, section headers, or item markers
+const GF_CONFIRMED = /\b(?:gluten[\s-]?free|gf|celiac[\s-]?friendly)\b/i;
+const VEGAN_CONFIRMED = /\b(?:vegan)\b/i;
+const VEG_CONFIRMED = /\b(?:vegetarian|veggie|plant[\s-]?based)\b/i;
+
+// Inferred patterns: ingredient-level hints
+const GF_INFERRED = /\b(?:cauliflower crust|rice flour|gluten[\s-]?free option|can be made gf)\b/i;
+const VEGAN_INFERRED = /\b(?:dairy[\s-]?free|no animal|vegan option|can be made vegan)\b/i;
+const VEG_INFERRED = /\b(?:meatless|meat[\s-]?free|vegetable[\s-]?forward|vegetarian option)\b/i;
+
+function checkDietary(
+  confirmedRe: RegExp,
+  inferredRe: RegExp,
+  text: string
+): DietaryFlag {
+  if (confirmedRe.test(text)) return { available: true, confidence: "confirmed" };
+  if (inferredRe.test(text)) return { available: true, confidence: "inferred" };
+  return { available: false, confidence: "inferred" };
+}
+
+/**
+ * Given menu page text, classify dietary options.
+ */
+export function parseDietaryFlags(text: string): DietaryFlags {
+  return {
+    gluten_free: checkDietary(GF_CONFIRMED, GF_INFERRED, text),
+    vegan: checkDietary(VEGAN_CONFIRMED, VEGAN_INFERRED, text),
+    vegetarian: checkDietary(VEG_CONFIRMED, VEG_INFERRED, text),
+  };
+}
+
+/**
+ * Full pipeline for one restaurant: search for menu, fetch it, parse dietary flags.
+ * Returns { menuUrl, dietaryFlags }.
+ */
+export async function discoverMenu(restaurantName: string): Promise<{
+  menuUrl: string | null;
+  dietaryFlags: DietaryFlags;
+}> {
+  const defaultFlags: DietaryFlags = {
+    gluten_free: { available: false, confidence: "inferred" },
+    vegan: { available: false, confidence: "inferred" },
+    vegetarian: { available: false, confidence: "inferred" },
+  };
+
+  const urls = await findMenuUrls(restaurantName);
+  if (urls.length === 0) return { menuUrl: null, dietaryFlags: defaultFlags };
+
+  // Try the top candidate URLs (up to 3) to find actual menu content
+  for (const url of urls.slice(0, 3)) {
+    const text = await fetchPageText(url);
+    if (text.length < 50) continue; // too short to be a real menu
+
+    // Check if it's actually a menu page (has food-related content)
+    const menuSignals = /\b(?:menu|appetizer|entr[eé]e|dessert|salad|soup|pizza|pasta|burger|sandwich|bowl|plate|\$\d)\b/i;
+    if (!menuSignals.test(text)) continue;
+
+    const flags = parseDietaryFlags(text);
+    return { menuUrl: url, dietaryFlags: flags };
+  }
+
+  // Couldn't find a parseable menu — mark as checked with no results
+  return { menuUrl: urls[0] ?? null, dietaryFlags: defaultFlags };
+}
+
 async function currentLists(): Promise<{ restaurantNames: string[]; eventTitles: string[] }> {
   const [rRes, eRes] = await Promise.all([
     fetch(`${APP_URL}/api/restaurants`),
@@ -147,6 +295,38 @@ async function main() {
     eventTitles: lists.eventTitles,
     lastRunAt: now.toISOString(),
   });
+
+  // Phase 2: Menu discovery for opened restaurants
+  console.log("[cron] starting menu discovery...");
+  try {
+    const menuRes = await fetch(`${APP_URL}/api/restaurants/needing-menu-check`, {
+      headers: { "x-cron-secret": CRON_SECRET },
+    });
+    if (menuRes.ok) {
+      const toCheck: { id: number; name: string }[] = await menuRes.json();
+      console.log(`[cron] ${toCheck.length} restaurants need menu check`);
+
+      // Process sequentially to avoid hammering search engines
+      for (const r of toCheck.slice(0, 10)) {
+        try {
+          console.log(`[cron] checking menu for: ${r.name}`);
+          const { menuUrl, dietaryFlags } = await discoverMenu(r.name);
+          await fetch(`${APP_URL}/api/restaurants/${r.id}/menu`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              "x-cron-secret": CRON_SECRET,
+            },
+            body: JSON.stringify({ menuUrl, dietaryFlags }),
+          });
+        } catch (err) {
+          console.error(`[cron] menu check failed for ${r.name}:`, err);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[cron] menu discovery phase failed:", err);
+  }
 }
 
 // Only run when executed directly, not when imported by tests.
