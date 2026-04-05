@@ -15,7 +15,10 @@ import { readFile, writeFile, mkdir } from "fs/promises";
 import { existsSync } from "fs";
 import type { DietaryFlags, DietaryFlag } from "../server/storage.js";
 
-export function resolveAppUrl(raw = process.env.APP_URL, port = process.env.PORT): string {
+export function resolveAppUrl(
+  raw = process.env.APP_URL,
+  port = process.env.PORT,
+): string {
   if (!raw) return `http://localhost:${port ?? "5000"}`;
 
   const normalized = raw.trim().replace(/\/+$/, "");
@@ -54,13 +57,17 @@ export async function searchWeb(q: string): Promise<string> {
     {
       headers: { "User-Agent": "sf-pulse-cron/1.0" },
       signal: AbortSignal.timeout(10_000),
-    }
+    },
   );
   return res.ok ? res.text() : "";
 }
 
 export function stripHtml(html: string): string {
-  return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 8000);
+  return html
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 8000);
 }
 
 // ── RSS / Atom parser ─────────────────────────────────────────────────────────
@@ -83,7 +90,8 @@ export function parseRss(xml: string): RssItem[] {
   const items: RssItem[] = [];
 
   // Normalise CDATA: strip the wrapper so the inner text is just plain text.
-  const stripCdata = (s: string) => s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").trim();
+  const stripCdata = (s: string) =>
+    s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").trim();
 
   // Generic attribute extractor: returns the value of a named attribute in a tag.
   const attr = (tag: string, name: string): string => {
@@ -93,7 +101,9 @@ export function parseRss(xml: string): RssItem[] {
 
   // Extract text between a pair of XML tags (non-greedy, first match).
   const between = (source: string, tag: string): string => {
-    const m = source.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i"));
+    const m = source.match(
+      new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i"),
+    );
     return m ? stripCdata(m[1].trim()) : "";
   };
 
@@ -120,8 +130,12 @@ export function parseRss(xml: string): RssItem[] {
       link = between(chunk, "link");
     }
 
-    const pubDate = isAtom ? between(chunk, "published") : between(chunk, "pubDate");
-    const description = isAtom ? between(chunk, "summary") : between(chunk, "description");
+    const pubDate = isAtom
+      ? between(chunk, "published")
+      : between(chunk, "pubDate");
+    const description = isAtom
+      ? between(chunk, "summary")
+      : between(chunk, "description");
 
     if (title) {
       items.push({ title, link, pubDate, description: stripHtml(description) });
@@ -171,16 +185,30 @@ export type NewEvent = {
 
 // ── Text extractors (kept for DuckDuckGo fallback) ────────────────────────────
 
-export function extractRestaurants(text: string, existing: string[]): NewRestaurant[] {
+export function extractRestaurants(
+  text: string,
+  existing: string[],
+): NewRestaurant[] {
   const now = new Date();
   const month = now.toLocaleString("en-US", { month: "long", year: "numeric" });
   const results: NewRestaurant[] = [];
-  const pattern = /["']([A-Z][^"']{2,40})["']\s*(?:opens?|opened|opening|debuts?|now open)/gi;
+  const pattern =
+    /["']([A-Z][^"']{2,40})["']\s*(?:opens?|opened|opening|debuts?|now open)/gi;
   let m;
   while ((m = pattern.exec(text)) !== null) {
     const name = m[1].trim();
-    if (!existing.includes(name.toLowerCase()) && !results.find((r) => r.name === name)) {
-      results.push({ name, neighborhood: "San Francisco", cuisine: "New opening", address: null, opened_date: month, source_url: null });
+    if (
+      !existing.includes(name.toLowerCase()) &&
+      !results.find((r) => r.name === name)
+    ) {
+      results.push({
+        name,
+        neighborhood: "San Francisco",
+        cuisine: "New opening",
+        address: null,
+        opened_date: month,
+        source_url: null,
+      });
     }
   }
   return results;
@@ -188,17 +216,28 @@ export function extractRestaurants(text: string, existing: string[]): NewRestaur
 
 export function extractEvents(text: string, existing: string[]): NewEvent[] {
   const results: NewEvent[] = [];
-  const months = "January|February|March|April|May|June|July|August|September|October|November|December";
+  const months =
+    "January|February|March|April|May|June|July|August|September|October|November|December";
   const pattern = new RegExp(
     `([A-Z][A-Za-z &:'\\-]{4,60})\\s+(?:on\\s+|[–-]\\s*)?((?:${months})\\s+\\d{1,2}(?:,?\\s+\\d{4})?)`,
-    "g"
+    "g",
   );
   let m;
   while ((m = pattern.exec(text)) !== null) {
     const title = m[1].trim().replace(/\s+/g, " ");
     const date = m[2].trim();
-    if (!existing.includes(title.toLowerCase()) && !results.find((e) => e.title === title)) {
-      results.push({ title, location: "Mission District, San Francisco", date, time: null, description: null, source_url: null });
+    if (
+      !existing.includes(title.toLowerCase()) &&
+      !results.find((e) => e.title === title)
+    ) {
+      results.push({
+        title,
+        location: "Mission District, San Francisco",
+        date,
+        time: null,
+        description: null,
+        source_url: null,
+      });
     }
   }
   return results.slice(0, 10);
@@ -206,7 +245,8 @@ export function extractEvents(text: string, existing: string[]): NewEvent[] {
 
 // ── Source fetchers ───────────────────────────────────────────────────────────
 
-const OPENING_KEYWORDS = /\b(?:opens?|opened|opening|debuts?|now open|coming soon|new restaurant|grand opening)\b/i;
+const OPENING_KEYWORDS =
+  /\b(?:opens?|opened|opening|debuts?|now open|coming soon|new restaurant|grand opening)\b/i;
 const THREE_MONTHS_MS = 90 * 24 * 60 * 60 * 1000;
 
 /**
@@ -223,7 +263,9 @@ function isRecent(pubDate: string): boolean {
  * Eater SF — Atom feed. Filter for opening-related articles.
  * Returns NewRestaurant candidates extracted from matching feed items.
  */
-export async function fetchEaterSF(existing: string[]): Promise<NewRestaurant[]> {
+export async function fetchEaterSF(
+  existing: string[],
+): Promise<NewRestaurant[]> {
   const items = await fetchRss("https://sf.eater.com/rss/index.xml");
   const now = new Date();
   const month = now.toLocaleString("en-US", { month: "long", year: "numeric" });
@@ -238,13 +280,16 @@ export async function fetchEaterSF(existing: string[]): Promise<NewRestaurant[]>
     const fromText = extractRestaurants(
       // Wrap title in quotes so the regex can match e.g. «Foo opens»
       `"${item.title}" opens`,
-      existing
+      existing,
     );
 
     if (fromText.length > 0) {
       for (const r of fromText) {
         r.source_url = item.link || null;
-        if (!existing.includes(r.name.toLowerCase()) && !results.find((x) => x.name === r.name)) {
+        if (
+          !existing.includes(r.name.toLowerCase()) &&
+          !results.find((x) => x.name === r.name)
+        ) {
           results.push(r);
         }
       }
@@ -290,7 +335,12 @@ export async function fetchSFist(existing: string[]): Promise<NewRestaurant[]> {
     // Must mention SF and be opening-related
     if (!OPENING_KEYWORDS.test(combined)) continue;
     if (!/san francisco|sf\b/i.test(combined)) continue;
-    if (!/restaurant|bar|café|cafe|bakery|eatery|bistro|diner|pizzeria|ramen|sushi/i.test(combined)) continue;
+    if (
+      !/restaurant|bar|café|cafe|bakery|eatery|bistro|diner|pizzeria|ramen|sushi/i.test(
+        combined,
+      )
+    )
+      continue;
 
     const name = item.title
       .replace(/\s*[-–|:,].*$/, "")
@@ -334,9 +384,15 @@ export async function fetchFuncheap(existing: string[]): Promise<NewEvent[]> {
     if (prefixMatch) {
       const [, month, day, year] = prefixMatch;
       const fullYear = year.length === 2 ? `20${year}` : year;
-      const d = new Date(`${fullYear}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`);
+      const d = new Date(
+        `${fullYear}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`,
+      );
       if (!isNaN(d.getTime())) {
-        date = d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+        date = d.toLocaleDateString("en-US", {
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+        });
       }
       title = title.slice(prefixMatch[0].length);
     }
@@ -392,14 +448,20 @@ export function parseFAMSFPage(html: string, existing: string[]): NewEvent[] {
   // Match h2/h3/h4 headings that look like event titles (not generic nav/labels)
   const headingRe = /<h[234][^>]*>([\s\S]*?)<\/h[234]>/gi;
   // Date patterns like "April 5", "Saturday, April 5", "April 5–12", "April 5, 2026"
-  const datePat = /(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:[–\-]\d{1,2})?(?:,?\s+\d{4})?/i;
+  const datePat =
+    /(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:[–\-]\d{1,2})?(?:,?\s+\d{4})?/i;
 
   let m;
   while ((m = headingRe.exec(html)) !== null) {
     const raw = stripHtml(m[1]);
     if (!raw || raw.length < 3 || raw.length > 120) continue;
     // Skip generic labels
-    if (/^(?:highlights?|today|upcoming|calendar|events?|exhibitions?|tours?|talks?|performances?|parties|access days?)\s*$/i.test(raw)) continue;
+    if (
+      /^(?:highlights?|today|upcoming|calendar|events?|exhibitions?|tours?|talks?|performances?|parties|access days?)\s*$/i.test(
+        raw,
+      )
+    )
+      continue;
 
     // Look for a date in the next 400 characters after this heading
     const nearby = stripHtml(html.slice(m.index, m.index + 400));
@@ -445,16 +507,25 @@ export async function fetchCalAcademy(existing: string[]): Promise<NewEvent[]> {
 /**
  * Parse Cal Academy events HTML. Exported for testing.
  */
-export function parseCalAcademyPage(html: string, existing: string[]): NewEvent[] {
+export function parseCalAcademyPage(
+  html: string,
+  existing: string[],
+): NewEvent[] {
   const results: NewEvent[] = [];
-  const datePat = /(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:,?\s+\d{4})?/i;
+  const datePat =
+    /(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:,?\s+\d{4})?/i;
   const headingRe = /<h[234][^>]*>([\s\S]*?)<\/h[234]>/gi;
 
   let m;
   while ((m = headingRe.exec(html)) !== null) {
     const raw = stripHtml(m[1]);
     if (!raw || raw.length < 3 || raw.length > 120) continue;
-    if (/^(?:events?|exhibits?|programs?|planetarium|calendar|featured)\s*$/i.test(raw)) continue;
+    if (
+      /^(?:events?|exhibits?|programs?|planetarium|calendar|featured)\s*$/i.test(
+        raw,
+      )
+    )
+      continue;
 
     const nearby = stripHtml(html.slice(m.index, m.index + 400));
     const dateMatch = nearby.match(datePat);
@@ -566,16 +637,20 @@ const VEGAN_CONFIRMED = /\b(?:vegan)\b/i;
 const VEG_CONFIRMED = /\b(?:vegetarian|veggie|plant[\s-]?based)\b/i;
 
 // Inferred patterns: ingredient-level hints
-const GF_INFERRED = /\b(?:cauliflower crust|rice flour|gluten[\s-]?free option|can be made gf)\b/i;
-const VEGAN_INFERRED = /\b(?:dairy[\s-]?free|no animal|vegan option|can be made vegan)\b/i;
-const VEG_INFERRED = /\b(?:meatless|meat[\s-]?free|vegetable[\s-]?forward|vegetarian option)\b/i;
+const GF_INFERRED =
+  /\b(?:cauliflower crust|rice flour|gluten[\s-]?free option|can be made gf)\b/i;
+const VEGAN_INFERRED =
+  /\b(?:dairy[\s-]?free|no animal|vegan option|can be made vegan)\b/i;
+const VEG_INFERRED =
+  /\b(?:meatless|meat[\s-]?free|vegetable[\s-]?forward|vegetarian option)\b/i;
 
 function checkDietary(
   confirmedRe: RegExp,
   inferredRe: RegExp,
-  text: string
+  text: string,
 ): DietaryFlag {
-  if (confirmedRe.test(text)) return { available: true, confidence: "confirmed" };
+  if (confirmedRe.test(text))
+    return { available: true, confidence: "confirmed" };
   if (inferredRe.test(text)) return { available: true, confidence: "inferred" };
   return { available: false, confidence: "inferred" };
 }
@@ -614,7 +689,8 @@ export async function discoverMenu(restaurantName: string): Promise<{
     if (text.length < 50) continue; // too short to be a real menu
 
     // Check if it's actually a menu page (has food-related content)
-    const menuSignals = /\b(?:menu|appetizer|entr[eé]e|dessert|salad|soup|pizza|pasta|burger|sandwich|bowl|plate|\$\d)\b/i;
+    const menuSignals =
+      /\b(?:menu|appetizer|entr[eé]e|dessert|salad|soup|pizza|pasta|burger|sandwich|bowl|plate|\$\d)\b/i;
     if (!menuSignals.test(text)) continue;
 
     const flags = parseDietaryFlags(text);
@@ -631,13 +707,20 @@ export async function discoverMenu(restaurantName: string): Promise<{
  * Unwrap a PromiseSettledResult, logging a warning on rejection.
  * Returns the fulfilled value or the provided fallback.
  */
-function settled<T>(result: PromiseSettledResult<T>, label: string, fallback: T): T {
+function settled<T>(
+  result: PromiseSettledResult<T>,
+  label: string,
+  fallback: T,
+): T {
   if (result.status === "fulfilled") return result.value;
   console.warn(`[cron] source failed (${label}):`, result.reason);
   return fallback;
 }
 
-async function currentLists(): Promise<{ restaurantNames: string[]; eventTitles: string[] }> {
+async function currentLists(): Promise<{
+  restaurantNames: string[];
+  eventTitles: string[];
+}> {
   const [rRes, eRes] = await Promise.all([
     fetch(`${APP_URL}/api/restaurants`),
     fetch(`${APP_URL}/api/events`),
@@ -657,7 +740,10 @@ async function main() {
 
   const [, lists] = await Promise.all([loadState(), currentLists()]);
   const now = new Date();
-  const monthYear = now.toLocaleString("en-US", { month: "long", year: "numeric" });
+  const monthYear = now.toLocaleString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
 
   // ── Restaurant sources ──────────────────────────────────────────────────────
   console.log("[cron] fetching restaurant sources...");
@@ -667,10 +753,13 @@ async function main() {
     searchWeb(`new restaurant openings San Francisco ${monthYear}`),
   ]);
 
-  const eaterItems   = settled(eaterResult,  "Eater SF",         [] as NewRestaurant[]);
-  const sfistItems   = settled(sfistResult,  "SFist",            [] as NewRestaurant[]);
-  const ddgRHtml     = settled(ddgRResult,   "DuckDuckGo (restaurants)", "");
-  const ddgRestaurants = extractRestaurants(stripHtml(ddgRHtml), lists.restaurantNames);
+  const eaterItems = settled(eaterResult, "Eater SF", [] as NewRestaurant[]);
+  const sfistItems = settled(sfistResult, "SFist", [] as NewRestaurant[]);
+  const ddgRHtml = settled(ddgRResult, "DuckDuckGo (restaurants)", "");
+  const ddgRestaurants = extractRestaurants(
+    stripHtml(ddgRHtml),
+    lists.restaurantNames,
+  );
 
   // Merge, dedup by lowercased name.
   const seenNames = new Set<string>(lists.restaurantNames);
@@ -685,22 +774,32 @@ async function main() {
 
   // ── Event sources ───────────────────────────────────────────────────────────
   console.log("[cron] fetching event sources...");
-  const [funcheapResult, famsfResult, calAcademyResult, ddgEResult] = await Promise.allSettled([
-    fetchFuncheap(lists.eventTitles),
-    fetchFAMSF(lists.eventTitles),
-    fetchCalAcademy(lists.eventTitles),
-    searchWeb(`San Francisco events Golden Gate Park concerts ${monthYear}`),
-  ]);
+  const [funcheapResult, famsfResult, calAcademyResult, ddgEResult] =
+    await Promise.allSettled([
+      fetchFuncheap(lists.eventTitles),
+      fetchFAMSF(lists.eventTitles),
+      fetchCalAcademy(lists.eventTitles),
+      searchWeb(`San Francisco events Golden Gate Park concerts ${monthYear}`),
+    ]);
 
-  const funcheapItems   = settled(funcheapResult,   "Funcheap",                  [] as NewEvent[]);
-  const famsfItems      = settled(famsfResult,      "FAMSF",                     [] as NewEvent[]);
-  const calAcademyItems = settled(calAcademyResult, "Cal Academy",               [] as NewEvent[]);
-  const ddgEHtml        = settled(ddgEResult,       "DuckDuckGo (events)",       "");
+  const funcheapItems = settled(funcheapResult, "Funcheap", [] as NewEvent[]);
+  const famsfItems = settled(famsfResult, "FAMSF", [] as NewEvent[]);
+  const calAcademyItems = settled(
+    calAcademyResult,
+    "Cal Academy",
+    [] as NewEvent[],
+  );
+  const ddgEHtml = settled(ddgEResult, "DuckDuckGo (events)", "");
   const ddgEvents = extractEvents(stripHtml(ddgEHtml), lists.eventTitles);
 
   const seenTitles = new Set<string>(lists.eventTitles);
   const newEvents: NewEvent[] = [];
-  for (const e of [...funcheapItems, ...famsfItems, ...calAcademyItems, ...ddgEvents]) {
+  for (const e of [
+    ...funcheapItems,
+    ...famsfItems,
+    ...calAcademyItems,
+    ...ddgEvents,
+  ]) {
     const key = e.title.toLowerCase();
     if (!seenTitles.has(key)) {
       seenTitles.add(key);
@@ -708,12 +807,17 @@ async function main() {
     }
   }
 
-  console.log(`[cron] candidates: ${newRestaurants.length} restaurants, ${newEvents.length} events`);
+  console.log(
+    `[cron] candidates: ${newRestaurants.length} restaurants, ${newEvents.length} events`,
+  );
 
   if (newRestaurants.length > 0 || newEvents.length > 0) {
     const res = await fetch(`${APP_URL}/api/cron/refresh`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-cron-secret": CRON_SECRET },
+      headers: {
+        "Content-Type": "application/json",
+        "x-cron-secret": CRON_SECRET,
+      },
       body: JSON.stringify({ restaurants: newRestaurants, events: newEvents }),
     });
     console.log("[cron] refresh response:", await res.json());
@@ -730,9 +834,12 @@ async function main() {
   // ── Phase 2: Menu discovery ─────────────────────────────────────────────────
   console.log("[cron] starting menu discovery...");
   try {
-    const menuRes = await fetch(`${APP_URL}/api/restaurants/needing-menu-check`, {
-      headers: { "x-cron-secret": CRON_SECRET },
-    });
+    const menuRes = await fetch(
+      `${APP_URL}/api/restaurants/needing-menu-check`,
+      {
+        headers: { "x-cron-secret": CRON_SECRET },
+      },
+    );
     if (menuRes.ok) {
       const toCheck: { id: number; name: string }[] = await menuRes.json();
       console.log(`[cron] ${toCheck.length} restaurants need menu check`);
@@ -761,8 +868,12 @@ async function main() {
 }
 
 // Only run when executed directly, not when imported by tests.
-const isMain = process.argv[1]?.endsWith("cron-refresh.ts") ||
-               process.argv[1]?.endsWith("cron.cjs");
+const isMain =
+  process.argv[1]?.endsWith("cron-refresh.ts") ||
+  process.argv[1]?.endsWith("cron.cjs");
 if (isMain) {
-  main().catch((err) => { console.error(err); process.exit(1); });
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
 }
