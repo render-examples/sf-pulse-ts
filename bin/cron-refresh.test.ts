@@ -444,12 +444,26 @@ describe("fetchEaterSF()", () => {
 describe("parseFAMSFPage()", () => {
   const sampleHtml = `
     <html><body>
-      <h3 class="event-title">Monet and Venice Exhibition</h3>
-      <span class="date">April 12, 2026</span>
-      <h3 class="event-title">Contemporary Queer Poetry Readings</h3>
-      <span class="date">April 19, 2026</span>
-      <h3 class="event-title">Today</h3>
-      <h3 class="nav-label">Upcoming</h3>
+      <nav>
+        <h3>Plan Your Visit</h3>
+        <h3>Tickets</h3>
+      </nav>
+      <article>
+        <h3 class="event-title">Monet and Venice Exhibition</h3>
+        <span class="date">April 12, 2026</span>
+      </article>
+      <article>
+        <h3 class="event-title">Contemporary Queer Poetry Readings</h3>
+        <span class="date">Saturday, April 19, 2026</span>
+      </article>
+      <article>
+        <h3 class="event-title">Artist Workshop</h3>
+        <span class="date">See website</span>
+      </article>
+      <article>
+        <h3 class="event-title">Today</h3>
+        <span class="date">April 20, 2026</span>
+      </article>
     </body></html>
   `;
 
@@ -463,8 +477,16 @@ describe("parseFAMSFPage()", () => {
   it("skips generic navigation labels", () => {
     const events = parseFAMSFPage(sampleHtml, []);
     const titles = events.map((e) => e.title);
-    assert.ok(!titles.includes("Today"), "should skip 'Today'");
-    assert.ok(!titles.includes("Upcoming"), "should skip 'Upcoming'");
+    assert.ok(!titles.includes("Plan Your Visit"), "should skip nav heading");
+    assert.ok(!titles.includes("Tickets"), "should skip nav heading");
+    assert.ok(!titles.includes("Today"), "should skip generic label");
+  });
+
+  it("requires an exact date and never falls back to placeholder text", () => {
+    const events = parseFAMSFPage(sampleHtml, []);
+    const titles = events.map((e) => e.title);
+    assert.ok(!titles.includes("Artist Workshop"), "should skip entries without a real date");
+    assert.ok(events.every((e) => e.date !== "See website"));
   });
 
   it("sets source_url to FAMSF calendar", () => {
@@ -497,10 +519,25 @@ describe("parseFAMSFPage()", () => {
 describe("parseCalAcademyPage()", () => {
   const sampleHtml = `
     <html><body>
-      <h3>NightLife: Arab Cultural Night</h3>
-      <p>April 23, 2026. 21+ event.</p>
-      <h3>Tiny Chef Planetarium Show</h3>
-      <p>Ongoing through June 2026.</p>
+      <nav>
+        <h3>Plan Your Visit</h3>
+      </nav>
+      <article>
+        <h3>NightLife: Arab Cultural Night</h3>
+        <p>April 23, 2026. 21+ event.</p>
+      </article>
+      <article>
+        <h3>Family Science Saturday</h3>
+        <p>Saturday, May 2, 2026.</p>
+      </article>
+      <article>
+        <h3>Tiny Chef Planetarium Show</h3>
+        <p>See website for schedule.</p>
+      </article>
+      <article>
+        <h3>Penguin Feeding</h3>
+        <p>Daily.</p>
+      </article>
       <h3>Events</h3>
     </body></html>
   `;
@@ -509,13 +546,14 @@ describe("parseCalAcademyPage()", () => {
     const events = parseCalAcademyPage(sampleHtml, []);
     const titles = events.map((e) => e.title);
     assert.ok(titles.includes("NightLife: Arab Cultural Night"), "should find first event");
-    assert.ok(titles.includes("Tiny Chef Planetarium Show"), "should find second event");
+    assert.ok(titles.includes("Family Science Saturday"), "should find second event");
   });
 
   it("skips generic 'Events' heading", () => {
     const events = parseCalAcademyPage(sampleHtml, []);
     const titles = events.map((e) => e.title);
     assert.ok(!titles.includes("Events"), "should skip generic label");
+    assert.ok(!titles.includes("Plan Your Visit"), "should skip nav heading");
   });
 
   it("sets source_url to Cal Academy events page", () => {
@@ -536,16 +574,21 @@ describe("parseCalAcademyPage()", () => {
     const events = parseCalAcademyPage(sampleHtml, []);
     const nightLife = events.find((e) => e.title === "NightLife: Arab Cultural Night");
     assert.ok(nightLife, "should find NightLife event");
-    assert.ok(
-      nightLife!.date.includes("April") || nightLife!.date === "See website",
-      "date should be April or fallback"
-    );
+    assert.ok(nightLife!.date.includes("April"), "date should be the extracted exact date");
+  });
+
+  it("requires an exact date and drops placeholder or non-date schedule text", () => {
+    const events = parseCalAcademyPage(sampleHtml, []);
+    const titles = events.map((e) => e.title);
+    assert.ok(!titles.includes("Tiny Chef Planetarium Show"), "should skip placeholder schedule text");
+    assert.ok(!titles.includes("Penguin Feeding"), "should skip non-date schedule text");
+    assert.ok(events.every((e) => e.date !== "See website"));
   });
 
   it("deduplicates against existing list", () => {
-    const events = parseCalAcademyPage(sampleHtml, ["tiny chef planetarium show"]);
+    const events = parseCalAcademyPage(sampleHtml, ["family science saturday"]);
     const titles = events.map((e) => e.title);
-    assert.ok(!titles.includes("Tiny Chef Planetarium Show"), "should skip already-known event");
+    assert.ok(!titles.includes("Family Science Saturday"), "should skip already-known event");
   });
 
   it("returns empty array for empty HTML", () => {

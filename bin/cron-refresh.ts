@@ -483,6 +483,126 @@ export async function fetchFuncheap(existing: string[]): Promise<NewEvent[]> {
   return results;
 }
 
+const MONTH_NAME_PATTERN =
+  "January|February|March|April|May|June|July|August|September|October|November|December";
+const WEEKDAY_PATTERN =
+  "Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday";
+const EXACT_EVENT_DATE_PATTERN =
+  `(?:(${WEEKDAY_PATTERN}),?\\s+)?` +
+  `(?:${MONTH_NAME_PATTERN})\\s+\\d{1,2}(?:\\s*[–-]\\s*\\d{1,2})?(?:,\\s*\\d{4})?`;
+const GENERIC_EVENT_TITLE_RE =
+  /^(?:highlights?|today|upcoming|calendar|events?|exhibitions?|exhibits?|tours?|talks?|performances?|parties|access days?|featured(?: events?)?|programs?|planetarium|visit|hours|tickets?|membership|donate|shop|search|menu|about|learn|support|collections?|plan your visit|what'?s on|see all|view all|read more)\s*$/i;
+const DATE_ONLY_TITLE_RE = new RegExp(
+  `^(?:${EXACT_EVENT_DATE_PATTERN}|(?:${MONTH_NAME_PATTERN})\\s+\\d{4})$`,
+  "i",
+);
+
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function stripParsingNoiseHtml(html: string): string {
+  return html
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(
+      /<(?:script|style|svg|noscript|nav|header|footer)\b[\s\S]*?<\/(?:script|style|svg|noscript|nav|header|footer)>/gi,
+      " ",
+    );
+}
+
+function isLikelyMuseumEventTitle(title: string, ignoredTitleRe: RegExp): boolean {
+  const normalized = normalizeWhitespace(title);
+  if (!normalized) return false;
+  if (normalized.length < 4 || normalized.length > 120) return false;
+  if (!/\p{L}/u.test(normalized)) return false;
+  if (normalized.split(/\s+/).length > 12) return false;
+  if (GENERIC_EVENT_TITLE_RE.test(normalized)) return false;
+  if (DATE_ONLY_TITLE_RE.test(normalized)) return false;
+  if (ignoredTitleRe.test(normalized)) return false;
+  return true;
+}
+
+function extractNearbyExactDate(windowText: string, title: string): string | null {
+  const normalizedWindow = normalizeWhitespace(windowText);
+  const normalizedTitle = normalizeWhitespace(title);
+  const titleIndex = normalizedWindow.indexOf(normalizedTitle);
+  if (titleIndex === -1) return null;
+
+  const datePattern = new RegExp(EXACT_EVENT_DATE_PATTERN, "gi");
+  let bestMatch: { date: string; distance: number } | null = null;
+  let match: RegExpExecArray | null;
+  while ((match = datePattern.exec(normalizedWindow)) !== null) {
+    const distance = Math.min(
+      Math.abs(match.index - titleIndex),
+      Math.abs(match.index + match[0].length - (titleIndex + normalizedTitle.length)),
+    );
+    if (distance > 240) continue;
+    const date = normalizeWhitespace(match[0]).replace(/\s*([–-])\s*/g, " $1 ");
+    if (!bestMatch || distance < bestMatch.distance) {
+      bestMatch = { date, distance };
+    }
+  }
+
+  return bestMatch?.date ?? null;
+}
+
+function parseMuseumEvents(
+  html: string,
+  existing: string[],
+  options: {
+    ignoredTitleRe: RegExp;
+    location: string;
+    sourceUrl: string;
+  },
+): NewEvent[] {
+  const cleanedHtml = stripParsingNoiseHtml(html);
+  const headingRe = /<h([234])[^>]*>([\s\S]*?)<\/h\1>/gi;
+  const headings: {
+    index: number;
+    end: number;
+    title: string;
+    isCandidate: boolean;
+  }[] = [];
+  let match: RegExpExecArray | null;
+
+  while ((match = headingRe.exec(cleanedHtml)) !== null) {
+    const title = normalizeWhitespace(stripHtml(match[2]));
+    headings.push({
+      index: match.index,
+      end: match.index + match[0].length,
+      title,
+      isCandidate: isLikelyMuseumEventTitle(title, options.ignoredTitleRe),
+    });
+  }
+
+  const results: NewEvent[] = [];
+  for (let i = 0; i < headings.length; i++) {
+    const heading = headings[i];
+    if (!heading.isCandidate) continue;
+    const nextHeadingIndex = headings[i + 1]?.index ?? cleanedHtml.length;
+    const windowStart = heading.index;
+    const windowEnd = Math.min(nextHeadingIndex, heading.end + 1200);
+    const windowText = stripHtml(cleanedHtml.slice(windowStart, windowEnd));
+    const date = extractNearbyExactDate(windowText, heading.title);
+    if (!date) continue;
+
+    const titleKey = heading.title.toLowerCase();
+    if (existing.includes(titleKey)) continue;
+    if (results.find((event) => event.title.toLowerCase() === titleKey)) continue;
+
+    results.push({
+      title: heading.title,
+      location: options.location,
+      date,
+      time: null,
+      description: null,
+      source_url: options.sourceUrl,
+    });
+  }
+
+  return results;
+}
+
 /**
  * FAMSF (de Young + Legion of Honor) — scrape the calendar page.
  */
@@ -508,47 +628,12 @@ export async function fetchFAMSF(existing: string[]): Promise<NewEvent[]> {
  * We extract h3 text and the nearest date-like string.
  */
 export function parseFAMSFPage(html: string, existing: string[]): NewEvent[] {
-  const results: NewEvent[] = [];
-  // Match h2/h3/h4 headings that look like event titles (not generic nav/labels)
-  const headingRe = /<h[234][^>]*>([\s\S]*?)<\/h[234]>/gi;
-  // Date patterns like "April 5", "Saturday, April 5", "April 5–12", "April 5, 2026"
-  const datePat =
-    /(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:[–\-]\d{1,2})?(?:,?\s+\d{4})?/i;
-
-  let m;
-  while ((m = headingRe.exec(html)) !== null) {
-    const raw = stripHtml(m[1]);
-    if (!raw || raw.length < 3 || raw.length > 120) continue;
-    // Skip generic labels
-    if (
-      /^(?:highlights?|today|upcoming|calendar|events?|exhibitions?|tours?|talks?|performances?|parties|access days?)\s*$/i.test(
-        raw,
-      )
-    )
-      continue;
-
-    // Look for a date in the next 400 characters after this heading
-    const nearby = stripHtml(html.slice(m.index, m.index + 400));
-    const dateMatch = nearby.match(datePat);
-    const date = dateMatch ? dateMatch[0] : "See website";
-
-    const title = raw.trim();
-    if (
-      !existing.includes(title.toLowerCase()) &&
-      !results.find((e) => e.title === title)
-    ) {
-      results.push({
-        title,
-        location: "Fine Arts Museums of San Francisco",
-        date,
-        time: null,
-        description: null,
-        source_url: "https://www.famsf.org/calendar",
-      });
-    }
-  }
-
-  return results;
+  return parseMuseumEvents(html, existing, {
+    ignoredTitleRe:
+      /^(?:de young|legion of honor|tickets?|hours|museum map|visitor information)$/i,
+    location: "Fine Arts Museums of San Francisco",
+    sourceUrl: "https://www.famsf.org/calendar",
+  });
 }
 
 /**
@@ -575,43 +660,12 @@ export function parseCalAcademyPage(
   html: string,
   existing: string[],
 ): NewEvent[] {
-  const results: NewEvent[] = [];
-  const datePat =
-    /(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:,?\s+\d{4})?/i;
-  const headingRe = /<h[234][^>]*>([\s\S]*?)<\/h[234]>/gi;
-
-  let m;
-  while ((m = headingRe.exec(html)) !== null) {
-    const raw = stripHtml(m[1]);
-    if (!raw || raw.length < 3 || raw.length > 120) continue;
-    if (
-      /^(?:events?|exhibits?|programs?|planetarium|calendar|featured)\s*$/i.test(
-        raw,
-      )
-    )
-      continue;
-
-    const nearby = stripHtml(html.slice(m.index, m.index + 400));
-    const dateMatch = nearby.match(datePat);
-    const date = dateMatch ? dateMatch[0] : "See website";
-
-    const title = raw.trim();
-    if (
-      !existing.includes(title.toLowerCase()) &&
-      !results.find((e) => e.title === title)
-    ) {
-      results.push({
-        title,
-        location: "California Academy of Sciences, Golden Gate Park",
-        date,
-        time: null,
-        description: null,
-        source_url: "https://www.calacademy.org/events",
-      });
-    }
-  }
-
-  return results;
+  return parseMuseumEvents(html, existing, {
+    ignoredTitleRe:
+      /^(?:planetarium|aquarium|rainforest|nightlife|today at the academy|museum map)$/i,
+    location: "California Academy of Sciences, Golden Gate Park",
+    sourceUrl: "https://www.calacademy.org/events",
+  });
 }
 
 // ── Menu discovery & dietary parsing ─────────────────────────────────────────
