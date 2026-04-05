@@ -620,6 +620,16 @@ export async function discoverMenu(restaurantName: string): Promise<{
 
 // ── DB list helpers ───────────────────────────────────────────────────────────
 
+/**
+ * Unwrap a PromiseSettledResult, logging a warning on rejection.
+ * Returns the fulfilled value or the provided fallback.
+ */
+function settled<T>(result: PromiseSettledResult<T>, label: string, fallback: T): T {
+  if (result.status === "fulfilled") return result.value;
+  console.warn(`[cron] source failed (${label}):`, result.reason);
+  return fallback;
+}
+
 async function currentLists(): Promise<{ restaurantNames: string[]; eventTitles: string[] }> {
   const [rRes, eRes] = await Promise.all([
     fetch(`${APP_URL}/api/restaurants`),
@@ -644,12 +654,15 @@ async function main() {
 
   // ── Restaurant sources ──────────────────────────────────────────────────────
   console.log("[cron] fetching restaurant sources...");
-  const [eaterItems, sfistItems, ddgRHtml] = await Promise.all([
+  const [eaterResult, sfistResult, ddgRResult] = await Promise.allSettled([
     fetchEaterSF(lists.restaurantNames),
     fetchSFist(lists.restaurantNames),
     searchWeb(`new restaurant openings San Francisco ${monthYear}`),
   ]);
 
+  const eaterItems   = settled(eaterResult,  "Eater SF",         [] as NewRestaurant[]);
+  const sfistItems   = settled(sfistResult,  "SFist",            [] as NewRestaurant[]);
+  const ddgRHtml     = settled(ddgRResult,   "DuckDuckGo (restaurants)", "");
   const ddgRestaurants = extractRestaurants(stripHtml(ddgRHtml), lists.restaurantNames);
 
   // Merge, dedup by lowercased name.
@@ -665,13 +678,17 @@ async function main() {
 
   // ── Event sources ───────────────────────────────────────────────────────────
   console.log("[cron] fetching event sources...");
-  const [funcheapItems, famsfItems, calAcademyItems, ddgEHtml] = await Promise.all([
+  const [funcheapResult, famsfResult, calAcademyResult, ddgEResult] = await Promise.allSettled([
     fetchFuncheap(lists.eventTitles),
     fetchFAMSF(lists.eventTitles),
     fetchCalAcademy(lists.eventTitles),
     searchWeb(`San Francisco events Golden Gate Park concerts ${monthYear}`),
   ]);
 
+  const funcheapItems   = settled(funcheapResult,   "Funcheap",                  [] as NewEvent[]);
+  const famsfItems      = settled(famsfResult,      "FAMSF",                     [] as NewEvent[]);
+  const calAcademyItems = settled(calAcademyResult, "Cal Academy",               [] as NewEvent[]);
+  const ddgEHtml        = settled(ddgEResult,       "DuckDuckGo (events)",       "");
   const ddgEvents = extractEvents(stripHtml(ddgEHtml), lists.eventTitles);
 
   const seenTitles = new Set<string>(lists.eventTitles);
