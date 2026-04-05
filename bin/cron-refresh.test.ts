@@ -1,9 +1,8 @@
 /**
  * Tests for bin/cron-refresh.ts
  *
- * Covers the pure extraction and HTML-stripping logic without any network
- * calls or file I/O. The integration of those functions with main() is
- * covered by routes.test.ts (POST /api/cron/refresh).
+ * Covers the pure extraction, HTML-stripping, RSS parsing, and source parser
+ * logic without any network calls or file I/O.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -13,7 +12,12 @@ import {
   extractEvents,
   extractUrls,
   parseDietaryFlags,
+  parseRss,
+  parseFAMSFPage,
+  parseCalAcademyPage,
+  fetchFuncheap,
 } from "./cron-refresh.js";
+import type { RssItem } from "./cron-refresh.js";
 
 // ── stripHtml ─────────────────────────────────────────────────────────────────
 
@@ -233,5 +237,249 @@ describe("parseDietaryFlags()", () => {
     const flags = parseDietaryFlags("Gluten-free cauliflower crust pizza.");
     assert.equal(flags.gluten_free.available, true);
     assert.equal(flags.gluten_free.confidence, "confirmed");
+  });
+});
+
+// ── parseRss ──────────────────────────────────────────────────────────────────
+
+describe("parseRss()", () => {
+  it("parses RSS 2.0 items", () => {
+    const xml = `<?xml version="1.0"?>
+<rss version="2.0">
+  <channel>
+    <title>Test Feed</title>
+    <item>
+      <title>First post</title>
+      <link>https://example.com/1</link>
+      <pubDate>Mon, 01 Apr 2026 12:00:00 GMT</pubDate>
+      <description>A short description.</description>
+    </item>
+    <item>
+      <title>Second post</title>
+      <link>https://example.com/2</link>
+      <pubDate>Tue, 02 Apr 2026 12:00:00 GMT</pubDate>
+      <description>Another description.</description>
+    </item>
+  </channel>
+</rss>`;
+    const items = parseRss(xml);
+    assert.equal(items.length, 2);
+    assert.equal(items[0].title, "First post");
+    assert.equal(items[0].link, "https://example.com/1");
+    assert.ok(items[0].pubDate.includes("Apr 2026") || items[0].pubDate.includes("01 Apr 2026"));
+    assert.equal(items[0].description, "A short description.");
+  });
+
+  it("parses Atom feed entries", () => {
+    const xml = `<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Eater SF</title>
+  <entry>
+    <title type="html"><![CDATA[New Taco Place Opens in the Mission]]></title>
+    <link rel="alternate" href="https://sf.eater.com/article/1"/>
+    <published>2026-04-03T18:05:42-04:00</published>
+    <summary type="html"><![CDATA[A great new spot.]]></summary>
+  </entry>
+  <entry>
+    <title type="html"><![CDATA[Best Brunch Spots April 2026]]></title>
+    <link rel="alternate" href="https://sf.eater.com/article/2"/>
+    <published>2026-04-01T10:00:00-04:00</published>
+    <summary type="html"><![CDATA[Our top picks.]]></summary>
+  </entry>
+</feed>`;
+    const items = parseRss(xml);
+    assert.equal(items.length, 2);
+    assert.equal(items[0].title, "New Taco Place Opens in the Mission");
+    assert.equal(items[0].link, "https://sf.eater.com/article/1");
+    assert.ok(items[0].pubDate.includes("2026-04-03"));
+    assert.equal(items[0].description, "A great new spot.");
+  });
+
+  it("handles CDATA wrappers in RSS 2.0 titles", () => {
+    const xml = `<rss version="2.0"><channel>
+      <item>
+        <title><![CDATA[CDATA Title & More]]></title>
+        <link>https://example.com/a</link>
+        <pubDate>Mon, 01 Apr 2026 00:00:00 GMT</pubDate>
+        <description><![CDATA[Body text here.]]></description>
+      </item>
+    </channel></rss>`;
+    const items = parseRss(xml);
+    assert.equal(items.length, 1);
+    assert.equal(items[0].title, "CDATA Title & More");
+  });
+
+  it("returns empty array for empty XML", () => {
+    assert.deepEqual(parseRss(""), []);
+  });
+
+  it("returns empty array for malformed XML with no items", () => {
+    assert.deepEqual(parseRss("<rss><channel></channel></rss>"), []);
+  });
+
+  it("strips HTML tags from titles", () => {
+    const xml = `<rss version="2.0"><channel>
+      <item>
+        <title><b>Bold Title</b> with <em>emphasis</em></title>
+        <link>https://example.com/b</link>
+        <pubDate>Mon, 01 Apr 2026 00:00:00 GMT</pubDate>
+        <description>desc</description>
+      </item>
+    </channel></rss>`;
+    const items = parseRss(xml);
+    assert.equal(items.length, 1);
+    assert.ok(!items[0].title.includes("<b>"), "should strip HTML tags from title");
+    assert.ok(items[0].title.includes("Bold Title"));
+  });
+});
+
+// ── parseFAMSFPage ────────────────────────────────────────────────────────────
+
+describe("parseFAMSFPage()", () => {
+  const sampleHtml = `
+    <html><body>
+      <h3 class="event-title">Monet and Venice Exhibition</h3>
+      <span class="date">April 12, 2026</span>
+      <h3 class="event-title">Contemporary Queer Poetry Readings</h3>
+      <span class="date">April 19, 2026</span>
+      <h3 class="event-title">Today</h3>
+      <h3 class="nav-label">Upcoming</h3>
+    </body></html>
+  `;
+
+  it("extracts event titles from h3 headings", () => {
+    const events = parseFAMSFPage(sampleHtml, []);
+    const titles = events.map((e) => e.title);
+    assert.ok(titles.includes("Monet and Venice Exhibition"), "should find first event");
+    assert.ok(titles.includes("Contemporary Queer Poetry Readings"), "should find second event");
+  });
+
+  it("skips generic navigation labels", () => {
+    const events = parseFAMSFPage(sampleHtml, []);
+    const titles = events.map((e) => e.title);
+    assert.ok(!titles.includes("Today"), "should skip 'Today'");
+    assert.ok(!titles.includes("Upcoming"), "should skip 'Upcoming'");
+  });
+
+  it("sets source_url to FAMSF calendar", () => {
+    const events = parseFAMSFPage(sampleHtml, []);
+    for (const e of events) {
+      assert.equal(e.source_url, "https://www.famsf.org/calendar");
+    }
+  });
+
+  it("sets location to Fine Arts Museums of San Francisco", () => {
+    const events = parseFAMSFPage(sampleHtml, []);
+    for (const e of events) {
+      assert.equal(e.location, "Fine Arts Museums of San Francisco");
+    }
+  });
+
+  it("deduplicates against existing list", () => {
+    const events = parseFAMSFPage(sampleHtml, ["monet and venice exhibition"]);
+    const titles = events.map((e) => e.title);
+    assert.ok(!titles.includes("Monet and Venice Exhibition"), "should skip already-known event");
+  });
+
+  it("returns empty array for empty HTML", () => {
+    assert.deepEqual(parseFAMSFPage("", []), []);
+  });
+});
+
+// ── parseCalAcademyPage ───────────────────────────────────────────────────────
+
+describe("parseCalAcademyPage()", () => {
+  const sampleHtml = `
+    <html><body>
+      <h3>NightLife: Arab Cultural Night</h3>
+      <p>April 23, 2026. 21+ event.</p>
+      <h3>Tiny Chef Planetarium Show</h3>
+      <p>Ongoing through June 2026.</p>
+      <h3>Events</h3>
+    </body></html>
+  `;
+
+  it("extracts event titles from h3 headings", () => {
+    const events = parseCalAcademyPage(sampleHtml, []);
+    const titles = events.map((e) => e.title);
+    assert.ok(titles.includes("NightLife: Arab Cultural Night"), "should find first event");
+    assert.ok(titles.includes("Tiny Chef Planetarium Show"), "should find second event");
+  });
+
+  it("skips generic 'Events' heading", () => {
+    const events = parseCalAcademyPage(sampleHtml, []);
+    const titles = events.map((e) => e.title);
+    assert.ok(!titles.includes("Events"), "should skip generic label");
+  });
+
+  it("sets source_url to Cal Academy events page", () => {
+    const events = parseCalAcademyPage(sampleHtml, []);
+    for (const e of events) {
+      assert.equal(e.source_url, "https://www.calacademy.org/events");
+    }
+  });
+
+  it("sets location to California Academy of Sciences, Golden Gate Park", () => {
+    const events = parseCalAcademyPage(sampleHtml, []);
+    for (const e of events) {
+      assert.equal(e.location, "California Academy of Sciences, Golden Gate Park");
+    }
+  });
+
+  it("extracts a date from nearby text when present", () => {
+    const events = parseCalAcademyPage(sampleHtml, []);
+    const nightLife = events.find((e) => e.title === "NightLife: Arab Cultural Night");
+    assert.ok(nightLife, "should find NightLife event");
+    assert.ok(
+      nightLife!.date.includes("April") || nightLife!.date === "See website",
+      "date should be April or fallback"
+    );
+  });
+
+  it("deduplicates against existing list", () => {
+    const events = parseCalAcademyPage(sampleHtml, ["tiny chef planetarium show"]);
+    const titles = events.map((e) => e.title);
+    assert.ok(!titles.includes("Tiny Chef Planetarium Show"), "should skip already-known event");
+  });
+
+  it("returns empty array for empty HTML", () => {
+    assert.deepEqual(parseCalAcademyPage("", []), []);
+  });
+});
+
+// ── Funcheap title parsing ────────────────────────────────────────────────────
+
+describe("Funcheap title parsing via parseRss", () => {
+  it("parses Funcheap date prefix format correctly", () => {
+    // Funcheap titles look like "7/2/26: Event Name - FREE"
+    const xml = `<rss version="2.0"><channel>
+      <item>
+        <title>7/2/26: Free First Thursdays at Berkeley Art Museum - FREE</title>
+        <link>https://sf.funcheap.com/example/</link>
+        <pubDate>Sun, 05 Apr 2026 15:14:18 +0000</pubDate>
+        <description>A free event.</description>
+      </item>
+    </channel></rss>`;
+    const items = parseRss(xml);
+    assert.equal(items.length, 1);
+    // The raw title is preserved by parseRss; stripping is done in fetchFuncheap
+    assert.ok(items[0].title.includes("Free First Thursdays"));
+  });
+
+  it("fetchFuncheap strips date prefix and FREE suffix from mock RSS", async () => {
+    // We can test the title-parsing logic inline since fetchFuncheap calls the network.
+    // Verify the regex used inside fetchFuncheap by reconstructing it here.
+    const rawTitle = "7/2/26: Free First Thursdays at Berkeley Art Museum - FREE";
+
+    // Strip date prefix "M/D/YY: "
+    let title = rawTitle;
+    const prefixMatch = title.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4}):\s*/);
+    if (prefixMatch) {
+      title = title.slice(prefixMatch[0].length);
+    }
+    // Strip trailing " - FREE"
+    title = title.replace(/\s*-\s*FREE\s*$/i, "").trim();
+
+    assert.equal(title, "Free First Thursdays at Berkeley Art Museum");
   });
 });

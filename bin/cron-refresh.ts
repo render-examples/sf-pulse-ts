@@ -1,10 +1,15 @@
 /**
  * Render Cron Job — runs daily at 7am PDT.
  *
- * Searches the web for new SF restaurant openings and Mission District events,
+ * Searches multiple sources for new SF restaurant openings and events,
  * then POSTs newly-found items to the app's /api/cron/refresh endpoint.
  * State is persisted to /var/data/sf-pulse-state.json (Render persistent disk)
  * so each run only reports items not seen in prior runs.
+ *
+ * Sources:
+ *   Restaurants: Eater SF (Atom), SFist (RSS 2.0), DuckDuckGo fallback
+ *   Events:      Funcheap (RSS 2.0), FAMSF calendar page, Cal Academy events page,
+ *                DuckDuckGo fallback
  */
 import { readFile, writeFile, mkdir } from "fs/promises";
 import { existsSync } from "fs";
@@ -51,6 +56,94 @@ export function stripHtml(html: string): string {
   return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 8000);
 }
 
+// ── RSS / Atom parser ─────────────────────────────────────────────────────────
+
+export interface RssItem {
+  title: string;
+  link: string;
+  pubDate: string;
+  description: string;
+}
+
+/**
+ * Parse an RSS 2.0 or Atom feed XML string into a flat array of RssItem.
+ * Handles:
+ *   - Atom: <entry> / <published> / <summary> / <link rel="alternate" href="…"/>
+ *   - RSS 2.0: <item> / <pubDate> / <description> / <link>
+ *   - CDATA sections in any field
+ */
+export function parseRss(xml: string): RssItem[] {
+  const items: RssItem[] = [];
+
+  // Normalise CDATA: strip the wrapper so the inner text is just plain text.
+  const stripCdata = (s: string) => s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").trim();
+
+  // Generic attribute extractor: returns the value of a named attribute in a tag.
+  const attr = (tag: string, name: string): string => {
+    const m = tag.match(new RegExp(`${name}="([^"]*)"`, "i"));
+    return m ? m[1] : "";
+  };
+
+  // Extract text between a pair of XML tags (non-greedy, first match).
+  const between = (source: string, tag: string): string => {
+    const m = source.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i"));
+    return m ? stripCdata(m[1].trim()) : "";
+  };
+
+  // Detect feed type.
+  const isAtom = /<feed\b/i.test(xml);
+  const itemTag = isAtom ? "entry" : "item";
+
+  // Split on opening tags of the item element.
+  const chunks = xml.split(new RegExp(`<${itemTag}[\\s>]`, "i"));
+  // chunks[0] is the feed header; subsequent chunks are individual items.
+  for (let i = 1; i < chunks.length; i++) {
+    const chunk = chunks[i];
+
+    let title = between(chunk, "title");
+    // Strip any residual HTML from titles.
+    title = stripHtml(title);
+
+    let link = "";
+    if (isAtom) {
+      // Atom: <link rel="alternate" href="…"/> — self-closing
+      const linkMatch = chunk.match(/<link\s[^>]*href="([^"]+)"[^>]*\/>/i);
+      if (linkMatch) link = linkMatch[1];
+    } else {
+      link = between(chunk, "link");
+    }
+
+    const pubDate = isAtom ? between(chunk, "published") : between(chunk, "pubDate");
+    const description = isAtom ? between(chunk, "summary") : between(chunk, "description");
+
+    if (title) {
+      items.push({ title, link, pubDate, description: stripHtml(description) });
+    }
+  }
+
+  return items;
+}
+
+/**
+ * Fetch an RSS/Atom feed URL and return parsed items.
+ * Returns empty array on any network or parse error.
+ */
+export async function fetchRss(url: string): Promise<RssItem[]> {
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": "sf-pulse-cron/1.0" },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) return [];
+    const xml = await res.text();
+    return parseRss(xml);
+  } catch {
+    return [];
+  }
+}
+
+// ── Type definitions ──────────────────────────────────────────────────────────
+
 export type NewRestaurant = {
   name: string;
   neighborhood: string;
@@ -68,6 +161,8 @@ export type NewEvent = {
   description: string | null;
   source_url: string | null;
 };
+
+// ── Text extractors (kept for DuckDuckGo fallback) ────────────────────────────
 
 export function extractRestaurants(text: string, existing: string[]): NewRestaurant[] {
   const now = new Date();
@@ -100,6 +195,281 @@ export function extractEvents(text: string, existing: string[]): NewEvent[] {
     }
   }
   return results.slice(0, 10);
+}
+
+// ── Source fetchers ───────────────────────────────────────────────────────────
+
+const OPENING_KEYWORDS = /\b(?:opens?|opened|opening|debuts?|now open|coming soon|new restaurant|grand opening)\b/i;
+const THREE_MONTHS_MS = 90 * 24 * 60 * 60 * 1000;
+
+/**
+ * Is this item recent enough to consider? (within ~3 months)
+ */
+function isRecent(pubDate: string): boolean {
+  if (!pubDate) return true; // if no date, include it
+  const d = new Date(pubDate);
+  if (isNaN(d.getTime())) return true;
+  return Date.now() - d.getTime() < THREE_MONTHS_MS;
+}
+
+/**
+ * Eater SF — Atom feed. Filter for opening-related articles.
+ * Returns NewRestaurant candidates extracted from matching feed items.
+ */
+export async function fetchEaterSF(existing: string[]): Promise<NewRestaurant[]> {
+  const items = await fetchRss("https://sf.eater.com/rss/index.xml");
+  const now = new Date();
+  const month = now.toLocaleString("en-US", { month: "long", year: "numeric" });
+  const results: NewRestaurant[] = [];
+
+  for (const item of items) {
+    if (!isRecent(item.pubDate)) continue;
+    const combined = `${item.title} ${item.description}`;
+    if (!OPENING_KEYWORDS.test(combined)) continue;
+
+    // Try to extract restaurant names from the title using the opening pattern.
+    const fromText = extractRestaurants(
+      // Wrap title in quotes so the regex can match e.g. «Foo opens»
+      `"${item.title}" opens`,
+      existing
+    );
+
+    if (fromText.length > 0) {
+      for (const r of fromText) {
+        r.source_url = item.link || null;
+        if (!existing.includes(r.name.toLowerCase()) && !results.find((x) => x.name === r.name)) {
+          results.push(r);
+        }
+      }
+    } else {
+      // Fall back: use the article title as the restaurant name.
+      // Trim trailing punctuation and common suffixes.
+      const name = item.title
+        .replace(/\s*[-–|:,].*$/, "")
+        .replace(/\s+(?:Opens?|Opening|Debuts?|Now Open).*/i, "")
+        .trim();
+      if (
+        name.length >= 3 &&
+        !existing.includes(name.toLowerCase()) &&
+        !results.find((x) => x.name === name)
+      ) {
+        results.push({
+          name,
+          neighborhood: "San Francisco",
+          cuisine: "New opening",
+          address: null,
+          opened_date: month,
+          source_url: item.link || null,
+        });
+      }
+    }
+  }
+
+  return results;
+}
+
+/**
+ * SFist — RSS 2.0 feed. Filter for SF restaurant opening articles.
+ */
+export async function fetchSFist(existing: string[]): Promise<NewRestaurant[]> {
+  const items = await fetchRss("https://sfist.com/rss");
+  const now = new Date();
+  const month = now.toLocaleString("en-US", { month: "long", year: "numeric" });
+  const results: NewRestaurant[] = [];
+
+  for (const item of items) {
+    if (!isRecent(item.pubDate)) continue;
+    const combined = `${item.title} ${item.description}`;
+    // Must mention SF and be opening-related
+    if (!OPENING_KEYWORDS.test(combined)) continue;
+    if (!/san francisco|sf\b/i.test(combined)) continue;
+    if (!/restaurant|bar|café|cafe|bakery|eatery|bistro|diner|pizzeria|ramen|sushi/i.test(combined)) continue;
+
+    const name = item.title
+      .replace(/\s*[-–|:,].*$/, "")
+      .replace(/\s+(?:Opens?|Opening|Debuts?|Now Open).*/i, "")
+      .trim();
+    if (
+      name.length >= 3 &&
+      !existing.includes(name.toLowerCase()) &&
+      !results.find((x) => x.name === name)
+    ) {
+      results.push({
+        name,
+        neighborhood: "San Francisco",
+        cuisine: "New opening",
+        address: null,
+        opened_date: month,
+        source_url: item.link || null,
+      });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Funcheap — RSS 2.0 feed. Returns SF event items.
+ * Title format: "M/D/YY: Event Name - FREE" (strip prefix and suffix).
+ */
+export async function fetchFuncheap(existing: string[]): Promise<NewEvent[]> {
+  const items = await fetchRss("https://sf.funcheap.com/feed/");
+  const results: NewEvent[] = [];
+
+  for (const item of items) {
+    if (!isRecent(item.pubDate)) continue;
+
+    // Parse the date prefix "M/D/YY: " from the title.
+    let title = item.title;
+    let date = item.pubDate;
+
+    const prefixMatch = title.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4}):\s*/);
+    if (prefixMatch) {
+      const [, month, day, year] = prefixMatch;
+      const fullYear = year.length === 2 ? `20${year}` : year;
+      const d = new Date(`${fullYear}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`);
+      if (!isNaN(d.getTime())) {
+        date = d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+      }
+      title = title.slice(prefixMatch[0].length);
+    }
+
+    // Strip trailing " - FREE" suffix.
+    title = title.replace(/\s*-\s*FREE\s*$/i, "").trim();
+
+    if (
+      title.length >= 3 &&
+      !existing.includes(title.toLowerCase()) &&
+      !results.find((e) => e.title === title)
+    ) {
+      results.push({
+        title,
+        location: "San Francisco",
+        date,
+        time: null,
+        description: item.description || null,
+        source_url: item.link || null,
+      });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * FAMSF (de Young + Legion of Honor) — scrape the calendar page.
+ */
+export async function fetchFAMSF(existing: string[]): Promise<NewEvent[]> {
+  try {
+    const res = await fetch("https://www.famsf.org/calendar", {
+      headers: { "User-Agent": "sf-pulse-cron/1.0" },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) return [];
+    const html = await res.text();
+    return parseFAMSFPage(html, existing);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Parse FAMSF calendar HTML. Exported for testing with fixture HTML.
+ * FAMSF renders event titles in elements like:
+ *   <h3 class="...">Event Title</h3>
+ *   with sibling date text nearby.
+ * We extract h3 text and the nearest date-like string.
+ */
+export function parseFAMSFPage(html: string, existing: string[]): NewEvent[] {
+  const results: NewEvent[] = [];
+  // Match h2/h3/h4 headings that look like event titles (not generic nav/labels)
+  const headingRe = /<h[234][^>]*>([\s\S]*?)<\/h[234]>/gi;
+  // Date patterns like "April 5", "Saturday, April 5", "April 5–12", "April 5, 2026"
+  const datePat = /(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:[–\-]\d{1,2})?(?:,?\s+\d{4})?/i;
+
+  let m;
+  while ((m = headingRe.exec(html)) !== null) {
+    const raw = stripHtml(m[1]);
+    if (!raw || raw.length < 3 || raw.length > 120) continue;
+    // Skip generic labels
+    if (/^(?:highlights?|today|upcoming|calendar|events?|exhibitions?|tours?|talks?|performances?|parties|access days?)\s*$/i.test(raw)) continue;
+
+    // Look for a date in the next 400 characters after this heading
+    const nearby = stripHtml(html.slice(m.index, m.index + 400));
+    const dateMatch = nearby.match(datePat);
+    const date = dateMatch ? dateMatch[0] : "See website";
+
+    const title = raw.trim();
+    if (
+      !existing.includes(title.toLowerCase()) &&
+      !results.find((e) => e.title === title)
+    ) {
+      results.push({
+        title,
+        location: "Fine Arts Museums of San Francisco",
+        date,
+        time: null,
+        description: null,
+        source_url: "https://www.famsf.org/calendar",
+      });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * California Academy of Sciences — scrape the events page.
+ */
+export async function fetchCalAcademy(existing: string[]): Promise<NewEvent[]> {
+  try {
+    const res = await fetch("https://www.calacademy.org/events", {
+      headers: { "User-Agent": "sf-pulse-cron/1.0" },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) return [];
+    const html = await res.text();
+    return parseCalAcademyPage(html, existing);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Parse Cal Academy events HTML. Exported for testing.
+ */
+export function parseCalAcademyPage(html: string, existing: string[]): NewEvent[] {
+  const results: NewEvent[] = [];
+  const datePat = /(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:,?\s+\d{4})?/i;
+  const headingRe = /<h[234][^>]*>([\s\S]*?)<\/h[234]>/gi;
+
+  let m;
+  while ((m = headingRe.exec(html)) !== null) {
+    const raw = stripHtml(m[1]);
+    if (!raw || raw.length < 3 || raw.length > 120) continue;
+    if (/^(?:events?|exhibits?|programs?|planetarium|calendar|featured)\s*$/i.test(raw)) continue;
+
+    const nearby = stripHtml(html.slice(m.index, m.index + 400));
+    const dateMatch = nearby.match(datePat);
+    const date = dateMatch ? dateMatch[0] : "See website";
+
+    const title = raw.trim();
+    if (
+      !existing.includes(title.toLowerCase()) &&
+      !results.find((e) => e.title === title)
+    ) {
+      results.push({
+        title,
+        location: "California Academy of Sciences, Golden Gate Park",
+        date,
+        time: null,
+        description: null,
+        source_url: "https://www.calacademy.org/events",
+      });
+    }
+  }
+
+  return results;
 }
 
 // ── Menu discovery & dietary parsing ─────────────────────────────────────────
@@ -142,7 +512,6 @@ export async function findMenuUrls(restaurantName: string): Promise<string[]> {
   const filtered = allUrls.filter((u) => {
     if (seen.has(u)) return false;
     seen.add(u);
-    // Skip DuckDuckGo tracking redirects and common non-menu URLs
     if (u.includes("duckduckgo.com")) return false;
     if (u.includes("google.com/search")) return false;
     return true;
@@ -249,6 +618,8 @@ export async function discoverMenu(restaurantName: string): Promise<{
   return { menuUrl: urls[0] ?? null, dietaryFlags: defaultFlags };
 }
 
+// ── DB list helpers ───────────────────────────────────────────────────────────
+
 async function currentLists(): Promise<{ restaurantNames: string[]; eventTitles: string[] }> {
   const [rRes, eRes] = await Promise.all([
     fetch(`${APP_URL}/api/restaurants`),
@@ -262,20 +633,56 @@ async function currentLists(): Promise<{ restaurantNames: string[]; eventTitles:
   };
 }
 
+// ── main ──────────────────────────────────────────────────────────────────────
+
 async function main() {
   console.log(`[cron] SF Pulse refresh — ${new Date().toISOString()}`);
 
-  const [state, lists] = await Promise.all([loadState(), currentLists()]);
+  const [, lists] = await Promise.all([loadState(), currentLists()]);
   const now = new Date();
   const monthYear = now.toLocaleString("en-US", { month: "long", year: "numeric" });
 
-  const [rHtml, eHtml] = await Promise.all([
+  // ── Restaurant sources ──────────────────────────────────────────────────────
+  console.log("[cron] fetching restaurant sources...");
+  const [eaterItems, sfistItems, ddgRHtml] = await Promise.all([
+    fetchEaterSF(lists.restaurantNames),
+    fetchSFist(lists.restaurantNames),
     searchWeb(`new restaurant openings San Francisco ${monthYear}`),
-    searchWeb(`Mission District San Francisco events ${monthYear}`),
   ]);
 
-  const newRestaurants = extractRestaurants(stripHtml(rHtml), lists.restaurantNames);
-  const newEvents = extractEvents(stripHtml(eHtml), lists.eventTitles);
+  const ddgRestaurants = extractRestaurants(stripHtml(ddgRHtml), lists.restaurantNames);
+
+  // Merge, dedup by lowercased name.
+  const seenNames = new Set<string>(lists.restaurantNames);
+  const newRestaurants: NewRestaurant[] = [];
+  for (const r of [...eaterItems, ...sfistItems, ...ddgRestaurants]) {
+    const key = r.name.toLowerCase();
+    if (!seenNames.has(key)) {
+      seenNames.add(key);
+      newRestaurants.push(r);
+    }
+  }
+
+  // ── Event sources ───────────────────────────────────────────────────────────
+  console.log("[cron] fetching event sources...");
+  const [funcheapItems, famsfItems, calAcademyItems, ddgEHtml] = await Promise.all([
+    fetchFuncheap(lists.eventTitles),
+    fetchFAMSF(lists.eventTitles),
+    fetchCalAcademy(lists.eventTitles),
+    searchWeb(`San Francisco events Golden Gate Park concerts ${monthYear}`),
+  ]);
+
+  const ddgEvents = extractEvents(stripHtml(ddgEHtml), lists.eventTitles);
+
+  const seenTitles = new Set<string>(lists.eventTitles);
+  const newEvents: NewEvent[] = [];
+  for (const e of [...funcheapItems, ...famsfItems, ...calAcademyItems, ...ddgEvents]) {
+    const key = e.title.toLowerCase();
+    if (!seenTitles.has(key)) {
+      seenTitles.add(key);
+      newEvents.push(e);
+    }
+  }
 
   console.log(`[cron] candidates: ${newRestaurants.length} restaurants, ${newEvents.length} events`);
 
@@ -291,12 +698,12 @@ async function main() {
   }
 
   await saveState({
-    restaurantNames: lists.restaurantNames,
-    eventTitles: lists.eventTitles,
+    restaurantNames: [...seenNames],
+    eventTitles: [...seenTitles],
     lastRunAt: now.toISOString(),
   });
 
-  // Phase 2: Menu discovery for opened restaurants
+  // ── Phase 2: Menu discovery ─────────────────────────────────────────────────
   console.log("[cron] starting menu discovery...");
   try {
     const menuRes = await fetch(`${APP_URL}/api/restaurants/needing-menu-check`, {
