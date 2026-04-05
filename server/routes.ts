@@ -3,7 +3,6 @@ import type { Server } from "http";
 import webpush from "web-push";
 import * as storage from "./storage.js";
 import { addClient, broadcast } from "./sse.js";
-import { seedDatabase } from "./seed.js";
 
 const VAPID_PUBLIC_KEY =
   process.env.VAPID_PUBLIC_KEY ||
@@ -112,18 +111,6 @@ export function registerRoutes(server: Server, app: Express): void {
     }
 
     res.json({ added: { restaurants: newRestaurants, events: newEvents } });
-  });
-
-  // ── Seed trigger (one-time data load) ─────────────────────────────────────
-  app.post("/api/cron/seed", async (req, res) => {
-    const secret = process.env.CRON_SECRET;
-    if (secret && req.headers["x-cron-secret"] !== secret) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-    await seedDatabase();
-    broadcast("restaurants", { action: "refresh" });
-    broadcast("events", { action: "refresh" });
-    res.json({ ok: true });
   });
 
   // ── Push subscriptions ─────────────────────────────────────────────────────

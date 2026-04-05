@@ -9,7 +9,7 @@ services:
     name: sf-pulse
     runtime: node
     plan: starter
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci && npm run build && node dist/bin/migrate.cjs
     startCommand: node dist/index.cjs
     healthCheckPath: /api/last-updated
     envVars:
@@ -32,8 +32,8 @@ services:
     plan: starter
     # 7:00 AM PDT = 14:00 UTC
     schedule: "0 14 * * *"
-    buildCommand: npm ci
-    startCommand: node scripts/cron-refresh.cjs
+    buildCommand: npm ci && npm run build
+    startCommand: node dist/bin/cron.cjs
     envVars:
       - key: DATABASE_URL
         fromDatabase:

@@ -1,6 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { createServer } from "http";
-import { initSchema } from "./db.js";
 import { registerRoutes } from "./routes.js";
 import { serveStatic } from "./static.js";
 
@@ -22,8 +21,6 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  await initSchema();
-
   registerRoutes(httpServer, app);
 
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
