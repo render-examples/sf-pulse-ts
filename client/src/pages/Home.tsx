@@ -1,28 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from "react";
 import s from "./Home.module.css";
+import type { Restaurant, SFEvent } from "../types";
+import { parseDate, todayUTC } from "../lib/dates";
 
 /* ── Types ─────────────────────────────────────────────────────────────── */
-interface Restaurant {
-  id: number;
-  name: string;
-  neighborhood: string;
-  cuisine: string;
-  address: string | null;
-  opened_date: string;
-  source_url: string | null;
-}
-
-interface SFEvent {
-  id: number;
-  title: string;
-  location: string;
-  date: string;
-  time: string | null;
-  description: string | null;
-  source_url: string | null;
-}
-
 interface Toast { id: number; title: string; body?: string }
 
 /* ── Icons (inline SVG, no deps) ───────────────────────────────────────── */
@@ -83,7 +65,7 @@ function IconClock() {
 }
 function IconPin() {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width: 12, height: 12, display: 'inline', verticalAlign: 'middle', flexShrink: 0, fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' }}>
+    <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width: 12, height: 12, display: "inline", verticalAlign: "middle", flexShrink: 0, fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }}>
       <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
       <circle cx="12" cy="10" r="3" />
     </svg>
@@ -149,26 +131,67 @@ function usePush() {
   return { subscribed, supported, loading, subscribe, unsubscribe };
 }
 
-/* ── Skeleton ────────────────────────────────────────────────────────────── */
-function Skeleton() {
-  return (
-    <div className={s.skeleton}>
-      {Array.from({ length: 8 }).map((_, i) => (
-        <div key={i} className={s.skeletonRow}>
-          <div className={s.skeletonCell} style={{ width: "30%" }} />
-          <div className={s.skeletonCell} style={{ width: "20%" }} />
-          <div className={s.skeletonCell} style={{ width: "25%" }} />
-          <div className={s.skeletonCell} style={{ width: "15%" }} />
-        </div>
-      ))}
-    </div>
-  );
+/* ── Timeline helpers ───────────────────────────────────────────────────── */
+
+/**
+ * A row in the unified timeline — either a data row or the synthetic TODAY marker.
+ */
+type TimelineRow<T> =
+  | { kind: "data"; item: T; sortMs: number }
+  | { kind: "today"; sortMs: number };
+
+function buildTimeline<T>(
+  items: T[],
+  getDateStr: (item: T) => string
+): TimelineRow<T>[] {
+  const today = todayUTC().getTime();
+
+  const dataRows: TimelineRow<T>[] = items.map((item) => {
+    const d = parseDate(getDateStr(item));
+    return { kind: "data", item, sortMs: d ? d.getTime() : today };
+  });
+
+  // Insert the TODAY marker at its correct chronological position.
+  const allRows: TimelineRow<T>[] = [
+    ...dataRows,
+    { kind: "today", sortMs: today },
+  ];
+
+  allRows.sort((a, b) => a.sortMs - b.sortMs);
+  return allRows;
 }
 
-/* ── Restaurant table ────────────────────────────────────────────────────── */
-function RestaurantTable({ data, filter }: { data: Restaurant[]; filter: string }) {
+/* ── useScrollToToday ───────────────────────────────────────────────────── */
+/**
+ * After layout, scroll the TODAY row to the vertical center of the container.
+ * Re-runs whenever `deps` change (e.g. data loads or tab switches).
+ */
+function useScrollToToday(
+  containerRef: React.RefObject<HTMLDivElement | null>,
+  todayRef: React.RefObject<HTMLTableRowElement | null>,
+  deps: unknown[]
+) {
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    const todayEl = todayRef.current;
+    if (!container || !todayEl) return;
+
+    // Offset from top of the scrollable container to the TODAY row
+    const containerTop = container.getBoundingClientRect().top;
+    const todayTop = todayEl.getBoundingClientRect().top;
+    const relativeTop = todayTop - containerTop + container.scrollTop;
+
+    // Center it: scroll so today row's top is at (containerHeight / 2)
+    const target = relativeTop - container.clientHeight / 2 + todayEl.offsetHeight / 2;
+    container.scrollTop = Math.max(0, target);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+}
+
+/* ── Restaurant timeline ─────────────────────────────────────────────────── */
+function RestaurantTimeline({ data, filter }: { data: Restaurant[]; filter: string }) {
   const q = filter.toLowerCase();
-  const rows = filter
+  const filtered = filter
     ? data.filter(
         (r) =>
           r.name.toLowerCase().includes(q) ||
@@ -177,46 +200,70 @@ function RestaurantTable({ data, filter }: { data: Restaurant[]; filter: string 
       )
     : data;
 
-  if (rows.length === 0) return <p className={s.empty}>No restaurants match your filter.</p>;
+  const rows = useMemo(() => buildTimeline(filtered, (r) => r.opened_date), [filtered]);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const todayRef = useRef<HTMLTableRowElement>(null);
+  useScrollToToday(containerRef, todayRef, [rows]);
+
+  if (filtered.length === 0) return <p className={s.empty}>No restaurants match your filter.</p>;
 
   return (
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th className={s.colNeighborhood}>Neighborhood</th>
-          <th className={s.colCuisine}>Cuisine</th>
-          <th>Opened</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r) => (
-          <tr key={r.id}>
-            <td>
-              <div className={s.cellPrimary}>{r.name}</div>
-              {r.address && <div className={s.cellSub} style={{ display: 'flex', alignItems: 'center', gap: 3 }}><IconPin /> {r.address}</div>}
-              {r.source_url && (
-                <a href={r.source_url} target="_blank" rel="noopener noreferrer" className={s.cellSource}>
-                  Source <IconExternalLink />
-                </a>
-              )}
-            </td>
-            <td className={s.colNeighborhood}>
-              <span className={s.badge}>{r.neighborhood}</span>
-            </td>
-            <td className={`${s.colCuisine}`} style={{ color: "var(--text-2)" }}>{r.cuisine}</td>
-            <td style={{ color: "var(--text-2)", whiteSpace: "nowrap", fontSize: 12 }}>{r.opened_date}</td>
+    <div className={s.timelineScroll} ref={containerRef}>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th className={s.colNeighborhood}>Neighborhood</th>
+            <th className={s.colCuisine}>Cuisine</th>
+            <th>Opened</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => {
+            if (row.kind === "today") {
+              return (
+                <tr key="__today__" ref={todayRef} className={s.todayRow}>
+                  <td colSpan={4} className={s.todayCell}>
+                    <span className={s.todayLabel}>Today</span>
+                  </td>
+                </tr>
+              );
+            }
+            const r = row.item;
+            return (
+              <tr key={r.id}>
+                <td>
+                  <div className={s.cellPrimary}>{r.name}</div>
+                  {r.address && (
+                    <div className={s.cellSub} style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                      <IconPin /> {r.address}
+                    </div>
+                  )}
+                  {r.source_url && (
+                    <a href={r.source_url} target="_blank" rel="noopener noreferrer" className={s.cellSource}>
+                      Source <IconExternalLink />
+                    </a>
+                  )}
+                </td>
+                <td className={s.colNeighborhood}>
+                  <span className={s.badge}>{r.neighborhood}</span>
+                </td>
+                <td className={s.colCuisine} style={{ color: "var(--text-2)" }}>{r.cuisine}</td>
+                <td style={{ color: "var(--text-2)", whiteSpace: "nowrap", fontSize: 12 }}>{r.opened_date}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
-/* ── Events table ────────────────────────────────────────────────────────── */
-function EventTable({ data, filter }: { data: SFEvent[]; filter: string }) {
+/* ── Events timeline ─────────────────────────────────────────────────────── */
+function EventTimeline({ data, filter }: { data: SFEvent[]; filter: string }) {
   const q = filter.toLowerCase();
-  const rows = filter
+  const filtered = filter
     ? data.filter(
         (e) =>
           e.title.toLowerCase().includes(q) ||
@@ -225,41 +272,61 @@ function EventTable({ data, filter }: { data: SFEvent[]; filter: string }) {
       )
     : data;
 
-  if (rows.length === 0) return <p className={s.empty}>No events match your filter.</p>;
+  const rows = useMemo(() => buildTimeline(filtered, (e) => e.date), [filtered]);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const todayRef = useRef<HTMLTableRowElement>(null);
+  useScrollToToday(containerRef, todayRef, [rows]);
+
+  if (filtered.length === 0) return <p className={s.empty}>No events match your filter.</p>;
 
   return (
-    <table>
-      <thead>
-        <tr>
-          <th>Event</th>
-          <th className={s.colNeighborhood}>Location</th>
-          <th>Date</th>
-          <th className={s.colTime}>Time</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((e) => (
-          <tr key={e.id}>
-            <td>
-              <div className={s.cellPrimary}>{e.title}</div>
-              {e.description && <div className={s.cellSub}>{e.description}</div>}
-              {e.source_url && (
-                <a href={e.source_url} target="_blank" rel="noopener noreferrer" className={s.cellSource}>
-                  Source <IconExternalLink />
-                </a>
-              )}
-            </td>
-            <td className={s.colNeighborhood} style={{ color: "var(--text-2)", fontSize: 12 }}>
-              {e.location}
-            </td>
-            <td style={{ color: "var(--text-2)", whiteSpace: "nowrap", fontSize: 12 }}>{e.date}</td>
-            <td className={s.colTime} style={{ color: "var(--text-2)", whiteSpace: "nowrap", fontSize: 12 }}>
-              {e.time ?? "—"}
-            </td>
+    <div className={s.timelineScroll} ref={containerRef}>
+      <table>
+        <thead>
+          <tr>
+            <th>Event</th>
+            <th className={s.colNeighborhood}>Location</th>
+            <th>Date</th>
+            <th className={s.colTime}>Time</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => {
+            if (row.kind === "today") {
+              return (
+                <tr key="__today__" ref={todayRef} className={s.todayRow}>
+                  <td colSpan={4} className={s.todayCell}>
+                    <span className={s.todayLabel}>Today</span>
+                  </td>
+                </tr>
+              );
+            }
+            const e = row.item;
+            return (
+              <tr key={e.id}>
+                <td>
+                  <div className={s.cellPrimary}>{e.title}</div>
+                  {e.description && <div className={s.cellSub}>{e.description}</div>}
+                  {e.source_url && (
+                    <a href={e.source_url} target="_blank" rel="noopener noreferrer" className={s.cellSource}>
+                      Source <IconExternalLink />
+                    </a>
+                  )}
+                </td>
+                <td className={s.colNeighborhood} style={{ color: "var(--text-2)", fontSize: 12 }}>
+                  {e.location}
+                </td>
+                <td style={{ color: "var(--text-2)", whiteSpace: "nowrap", fontSize: 12 }}>{e.date}</td>
+                <td className={s.colTime} style={{ color: "var(--text-2)", whiteSpace: "nowrap", fontSize: 12 }}>
+                  {e.time ?? "—"}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -279,11 +346,11 @@ export default function Home() {
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 5000);
   }, []);
 
-  const { data: restaurants, isLoading: rLoading } = useQuery<Restaurant[]>({
+  const { data: restaurants } = useQuery<Restaurant[]>({
     queryKey: ["/api/restaurants"],
   });
 
-  const { data: events, isLoading: eLoading } = useQuery<SFEvent[]>({
+  const { data: events } = useQuery<SFEvent[]>({
     queryKey: ["/api/events"],
   });
 
@@ -398,7 +465,17 @@ export default function Home() {
               />
             </div>
             <div className={s.tableCard}>
-              {rLoading ? <Skeleton /> : <RestaurantTable data={restaurants ?? []} filter={rFilter} />}
+              {restaurants
+                ? <RestaurantTimeline data={restaurants} filter={rFilter} />
+                : <div className={s.skeleton}>{Array.from({ length: 8 }).map((_, i) => (
+                    <div key={i} className={s.skeletonRow}>
+                      <div className={s.skeletonCell} style={{ width: "30%" }} />
+                      <div className={s.skeletonCell} style={{ width: "20%" }} />
+                      <div className={s.skeletonCell} style={{ width: "25%" }} />
+                      <div className={s.skeletonCell} style={{ width: "15%" }} />
+                    </div>
+                  ))}</div>
+              }
             </div>
           </section>
         )}
@@ -424,7 +501,17 @@ export default function Home() {
               />
             </div>
             <div className={s.tableCard}>
-              {eLoading ? <Skeleton /> : <EventTable data={events ?? []} filter={eFilter} />}
+              {events
+                ? <EventTimeline data={events} filter={eFilter} />
+                : <div className={s.skeleton}>{Array.from({ length: 8 }).map((_, i) => (
+                    <div key={i} className={s.skeletonRow}>
+                      <div className={s.skeletonCell} style={{ width: "30%" }} />
+                      <div className={s.skeletonCell} style={{ width: "20%" }} />
+                      <div className={s.skeletonCell} style={{ width: "25%" }} />
+                      <div className={s.skeletonCell} style={{ width: "15%" }} />
+                    </div>
+                  ))}</div>
+              }
             </div>
           </section>
         )}

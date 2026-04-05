@@ -10,7 +10,7 @@
     "migrate": "tsx bin/migrate.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "typecheck": "tsc --project tsconfig.json --noEmit && tsc --project tsconfig.test.json --noEmit",
-    "test": "node --import tsx/esm --test $(find server bin -name '*.test.ts' | sort | tr '\n' ' ')"
+    "test": "node --import tsx/esm --test $(find server bin client/src/lib -name '*.test.ts' | sort | tr '\\n' ' ')"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.60.5",

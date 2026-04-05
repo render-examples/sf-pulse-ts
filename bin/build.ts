@@ -22,9 +22,9 @@ async function buildAll() {
   const ext = await externals();
 
   const serverEntries: Record<string, string> = {
-    "dist/index":         "server/index.ts",
-    "dist/bin/migrate":   "bin/migrate.ts",
-    "dist/bin/cron":      "bin/cron-refresh.ts",
+    "dist/index":       "server/index.ts",
+    "dist/bin/migrate": "bin/migrate.ts",
+    "dist/bin/cron":    "bin/cron-refresh.ts",
   };
 
   for (const [outfile, entry] of Object.entries(serverEntries)) {
@@ -41,6 +41,23 @@ async function buildAll() {
       define: { "import.meta.dirname": "__dirname" },
     });
   }
+
+  // SSR server bundle: React + react-dom/server bundled in so the Node process
+  // can renderToString without needing the client node_modules layout.
+  console.log("building SSR server bundle...");
+  await esbuild({
+    entryPoints: ["client/src/entry-server.tsx"],
+    platform: "node",
+    bundle: true,
+    format: "cjs",
+    outfile: "dist/public/ssr-server.cjs",
+    // React and react-dom/server must be bundled (they're ESM-first in v19);
+    // external only deps that will be available in the Node runtime.
+    external: ["pg", "web-push", "express"],
+    logLevel: "info",
+    jsx: "automatic",
+    define: { "import.meta.dirname": "__dirname" },
+  });
 
   console.log("copying migrations...");
   await cp("migrations", "dist/migrations", { recursive: true });

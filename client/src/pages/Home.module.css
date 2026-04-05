@@ -216,7 +216,47 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
+  overflow: hidden;
+}
+
+/* Timeline scroll container — fills remaining viewport height */
+.timelineScroll {
+  height: calc(100dvh - 140px);
+  overflow-y: auto;
   overflow-x: auto;
+  overscroll-behavior: contain;
+  scroll-behavior: auto;
+}
+
+/* TODAY divider row */
+.todayRow {
+  pointer-events: none;
+}
+
+.todayCell {
+  padding: 0 !important;
+  border-bottom: none !important;
+  background: none !important;
+}
+
+.todayLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  padding: 6px 14px;
+}
+
+.todayLabel::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--accent);
+  opacity: .4;
 }
 
 table {
