@@ -207,7 +207,11 @@ function buildTimeline<T>(
     { kind: "today", sortMs: todaySortMs },
   ];
 
-  allRows.sort((a, b) => a.sortMs - b.sortMs);
+  allRows.sort((a, b) => {
+    if (a.sortMs !== b.sortMs) return a.sortMs - b.sortMs;
+    if (a.kind === b.kind) return 0;
+    return a.kind === "today" ? -1 : 1;
+  });
   return allRows;
 }
 
