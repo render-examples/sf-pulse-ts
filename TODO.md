@@ -1,0 +1,4 @@
+- [ ] break the cron script into many files
+- [ ] cron shouldn't need to hit the API, just call the code directly
+- [ ] html escape event titles
+- [ ] make sure events are always sorted by date. When ingesting events assume they are this year, or next year if the event is listed in a month that has already happened this year and no other year is specified.
