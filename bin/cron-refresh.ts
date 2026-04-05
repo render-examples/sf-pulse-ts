@@ -3,16 +3,14 @@
  *
  * Searches multiple sources for new SF restaurant openings and events,
  * then POSTs newly-found items to the app's /api/cron/refresh endpoint.
- * State is persisted to /var/data/sf-pulse-state.json (Render persistent disk)
- * so each run only reports items not seen in prior runs.
+ * Existing restaurants and events are read from the app's database-backed API
+ * so each run only reports items not already stored.
  *
  * Sources:
  *   Restaurants: Eater SF (Atom), SFist (RSS 2.0), DuckDuckGo fallback
  *   Events:      Funcheap (RSS 2.0), FAMSF calendar page, Cal Academy events page,
  *                DuckDuckGo fallback
  */
-import { readFile, writeFile, mkdir } from "fs/promises";
-import { existsSync } from "fs";
 import type { DietaryFlags, DietaryFlag } from "../server/storage.js";
 
 export function resolveAppUrl(
@@ -29,27 +27,6 @@ export function resolveAppUrl(
 
 const APP_URL = resolveAppUrl();
 const CRON_SECRET = process.env.CRON_SECRET ?? "";
-const STATE_DIR = "/var/data";
-const STATE_FILE = `${STATE_DIR}/sf-pulse-state.json`;
-
-export interface State {
-  restaurantNames: string[];
-  eventTitles: string[];
-  lastRunAt: string;
-}
-
-export async function loadState(): Promise<State> {
-  try {
-    return JSON.parse(await readFile(STATE_FILE, "utf-8"));
-  } catch {
-    return { restaurantNames: [], eventTitles: [], lastRunAt: "" };
-  }
-}
-
-export async function saveState(s: State): Promise<void> {
-  if (!existsSync(STATE_DIR)) await mkdir(STATE_DIR, { recursive: true });
-  await writeFile(STATE_FILE, JSON.stringify(s, null, 2));
-}
 
 export async function searchWeb(q: string): Promise<string> {
   const res = await fetch(
@@ -738,7 +715,7 @@ async function currentLists(): Promise<{
 async function main() {
   console.log(`[cron] SF Pulse refresh — ${new Date().toISOString()}`);
 
-  const [, lists] = await Promise.all([loadState(), currentLists()]);
+  const lists = await currentLists();
   const now = new Date();
   const monthYear = now.toLocaleString("en-US", {
     month: "long",
@@ -825,12 +802,6 @@ async function main() {
     console.log("[cron] nothing new");
   }
 
-  await saveState({
-    restaurantNames: [...seenNames],
-    eventTitles: [...seenTitles],
-    lastRunAt: now.toISOString(),
-  });
-
   // ── Phase 2: Menu discovery ─────────────────────────────────────────────────
   console.log("[cron] starting menu discovery...");
   try {
@@ -857,6 +828,7 @@ async function main() {
             },
             body: JSON.stringify({ menuUrl, dietaryFlags }),
           });
+          console.info(`[cron] found menu for ${r.name}`);
         } catch (err) {
           console.error(`[cron] menu check failed for ${r.name}:`, err);
         }
