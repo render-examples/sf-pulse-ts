@@ -16,13 +16,13 @@ const CRON_SECRET = process.env.CRON_SECRET ?? "";
 const STATE_DIR = "/var/data";
 const STATE_FILE = `${STATE_DIR}/sf-pulse-state.json`;
 
-interface State {
+export interface State {
   restaurantNames: string[];
   eventTitles: string[];
   lastRunAt: string;
 }
 
-async function loadState(): Promise<State> {
+export async function loadState(): Promise<State> {
   try {
     return JSON.parse(await readFile(STATE_FILE, "utf-8"));
   } catch {
@@ -30,12 +30,12 @@ async function loadState(): Promise<State> {
   }
 }
 
-async function saveState(s: State): Promise<void> {
+export async function saveState(s: State): Promise<void> {
   if (!existsSync(STATE_DIR)) await mkdir(STATE_DIR, { recursive: true });
   await writeFile(STATE_FILE, JSON.stringify(s, null, 2));
 }
 
-async function searchWeb(q: string): Promise<string> {
+export async function searchWeb(q: string): Promise<string> {
   const res = await fetch(
     `https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`,
     {
@@ -46,27 +46,29 @@ async function searchWeb(q: string): Promise<string> {
   return res.ok ? res.text() : "";
 }
 
-function stripHtml(html: string): string {
+export function stripHtml(html: string): string {
   return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 8000);
 }
 
-async function currentLists(): Promise<{ restaurantNames: string[]; eventTitles: string[] }> {
-  const [rRes, eRes] = await Promise.all([
-    fetch(`${APP_URL}/api/restaurants`),
-    fetch(`${APP_URL}/api/events`),
-  ]);
-  const restaurants: { name: string }[] = await rRes.json();
-  const events: { title: string }[] = await eRes.json();
-  return {
-    restaurantNames: restaurants.map((r) => r.name.toLowerCase()),
-    eventTitles: events.map((e) => e.title.toLowerCase()),
-  };
-}
+export type NewRestaurant = {
+  name: string;
+  neighborhood: string;
+  cuisine: string;
+  address: string | null;
+  opened_date: string;
+  source_url: string | null;
+};
 
-type NewRestaurant = { name: string; neighborhood: string; cuisine: string; address: string | null; opened_date: string; source_url: string | null };
-type NewEvent = { title: string; location: string; date: string; time: string | null; description: string | null; source_url: string | null };
+export type NewEvent = {
+  title: string;
+  location: string;
+  date: string;
+  time: string | null;
+  description: string | null;
+  source_url: string | null;
+};
 
-function extractRestaurants(text: string, existing: string[]): NewRestaurant[] {
+export function extractRestaurants(text: string, existing: string[]): NewRestaurant[] {
   const now = new Date();
   const month = now.toLocaleString("en-US", { month: "long", year: "numeric" });
   const results: NewRestaurant[] = [];
@@ -81,7 +83,7 @@ function extractRestaurants(text: string, existing: string[]): NewRestaurant[] {
   return results;
 }
 
-function extractEvents(text: string, existing: string[]): NewEvent[] {
+export function extractEvents(text: string, existing: string[]): NewEvent[] {
   const results: NewEvent[] = [];
   const months = "January|February|March|April|May|June|July|August|September|October|November|December";
   const pattern = new RegExp(
@@ -97,6 +99,19 @@ function extractEvents(text: string, existing: string[]): NewEvent[] {
     }
   }
   return results.slice(0, 10);
+}
+
+async function currentLists(): Promise<{ restaurantNames: string[]; eventTitles: string[] }> {
+  const [rRes, eRes] = await Promise.all([
+    fetch(`${APP_URL}/api/restaurants`),
+    fetch(`${APP_URL}/api/events`),
+  ]);
+  const restaurants: { name: string }[] = await rRes.json();
+  const events: { title: string }[] = await eRes.json();
+  return {
+    restaurantNames: restaurants.map((r) => r.name.toLowerCase()),
+    eventTitles: events.map((e) => e.title.toLowerCase()),
+  };
 }
 
 async function main() {
@@ -134,4 +149,9 @@ async function main() {
   });
 }
 
-main().catch((err) => { console.error(err); process.exit(1); });
+// Only run when executed directly, not when imported by tests.
+const isMain = process.argv[1]?.endsWith("cron-refresh.ts") ||
+               process.argv[1]?.endsWith("cron.cjs");
+if (isMain) {
+  main().catch((err) => { console.error(err); process.exit(1); });
+}
