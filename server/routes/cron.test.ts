@@ -1,8 +1,8 @@
 import { describe, it, before } from "node:test";
 import assert from "node:assert/strict";
-import supertest from "supertest";
 import type { Pool as PgPool } from "pg";
 import { createApp } from "../app.js";
+import { makeRequestAgent, type RequestAgent } from "../test-agent.js";
 import { createTestDb } from "../test-helpers.js";
 import { clearRestaurants, clearEvents } from "../storage.js";
 
@@ -26,13 +26,13 @@ const event = {
 
 function makeAgent(pool: PgPool) {
   const { app } = createApp(pool);
-  return supertest(app);
+  return makeRequestAgent(app);
 }
 
 // ── POST /api/cron/refresh ────────────────────────────────────────────────────
 
 describe("POST /api/cron/refresh", () => {
-  let agent: ReturnType<typeof supertest>;
+  let agent: RequestAgent;
   let pool: PgPool;
 
   before(async () => {

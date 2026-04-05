@@ -1,19 +1,19 @@
 import { describe, it, before } from "node:test";
 import assert from "node:assert/strict";
-import supertest from "supertest";
 import type { Pool as PgPool } from "pg";
 import { createApp } from "../app.js";
+import { makeRequestAgent, type RequestAgent } from "../test-agent.js";
 import { createTestDb } from "../test-helpers.js";
 
 function makeAgent(pool: PgPool) {
   const { app } = createApp(pool);
-  return supertest(app);
+  return makeRequestAgent(app);
 }
 
 // ── GET /api/push/vapid-key ───────────────────────────────────────────────────
 
 describe("GET /api/push/vapid-key", () => {
-  let agent: ReturnType<typeof supertest>;
+  let agent: RequestAgent;
 
   before(async () => {
     const pool = await createTestDb();
@@ -30,7 +30,7 @@ describe("GET /api/push/vapid-key", () => {
 // ── POST /api/push/subscribe + /unsubscribe ───────────────────────────────────
 
 describe("push subscription endpoints", () => {
-  let agent: ReturnType<typeof supertest>;
+  let agent: RequestAgent;
   const endpoint = "https://push.example.com/test-sub";
   const keys = { p256dh: "p256key", auth: "authkey" };
 

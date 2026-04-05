@@ -1,18 +1,18 @@
 import { describe, it, before } from "node:test";
 import assert from "node:assert/strict";
-import supertest from "supertest";
 import type { Pool as PgPool } from "pg";
 import { createApp } from "../app.js";
+import { makeRequestAgent, type RequestAgent } from "../test-agent.js";
 import { createTestDb } from "../test-helpers.js";
 import { addRestaurant, addEvent } from "../storage.js";
 
 function makeAgent(pool: PgPool) {
   const { app } = createApp(pool);
-  return supertest(app);
+  return makeRequestAgent(app);
 }
 
 describe("GET /api/rss.xml", () => {
-  let agent: ReturnType<typeof supertest>;
+  let agent: RequestAgent;
 
   before(async () => {
     const pool = await createTestDb();

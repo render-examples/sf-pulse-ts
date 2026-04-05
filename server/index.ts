@@ -13,7 +13,8 @@ const { app, httpServer } = createApp();
   }
 
   const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen({ port, host: "0.0.0.0" }, () => {
+  const host = process.env.HOST || "0.0.0.0";
+  httpServer.listen({ port, host }, () => {
     console.log(`[express] serving on port ${port}`);
   });
 })();

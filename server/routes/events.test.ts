@@ -1,8 +1,8 @@
 import { describe, it, before } from "node:test";
 import assert from "node:assert/strict";
-import supertest from "supertest";
 import type { Pool as PgPool } from "pg";
 import { createApp } from "../app.js";
+import { makeRequestAgent, type RequestAgent } from "../test-agent.js";
 import { createTestDb } from "../test-helpers.js";
 import { clearEvents, addEvent } from "../storage.js";
 
@@ -17,13 +17,13 @@ const event = {
 
 function makeAgent(pool: PgPool) {
   const { app } = createApp(pool);
-  return supertest(app);
+  return makeRequestAgent(app);
 }
 
 // ── GET /api/events ───────────────────────────────────────────────────────────
 
 describe("GET /api/events", () => {
-  let agent: ReturnType<typeof supertest>;
+  let agent: RequestAgent;
   let pool: PgPool;
 
   before(async () => {
@@ -50,7 +50,7 @@ describe("GET /api/events", () => {
 // ── DELETE /api/events/:id ────────────────────────────────────────────────────
 
 describe("DELETE /api/events/:id", () => {
-  let agent: ReturnType<typeof supertest>;
+  let agent: RequestAgent;
   let pool: PgPool;
 
   before(async () => {

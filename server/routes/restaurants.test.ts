@@ -1,8 +1,8 @@
 import { describe, it, before } from "node:test";
 import assert from "node:assert/strict";
-import supertest from "supertest";
 import type { Pool as PgPool } from "pg";
 import { createApp } from "../app.js";
+import { makeRequestAgent, type RequestAgent } from "../test-agent.js";
 import { createTestDb } from "../test-helpers.js";
 import { clearRestaurants, addRestaurant } from "../storage.js";
 
@@ -17,13 +17,13 @@ const restaurant = {
 
 function makeAgent(pool: PgPool) {
   const { app } = createApp(pool);
-  return supertest(app);
+  return makeRequestAgent(app);
 }
 
 // ── GET /api/restaurants ──────────────────────────────────────────────────────
 
 describe("GET /api/restaurants", () => {
-  let agent: ReturnType<typeof supertest>;
+  let agent: RequestAgent;
   let pool: PgPool;
 
   before(async () => {
@@ -52,7 +52,7 @@ describe("GET /api/restaurants", () => {
 // ── DELETE /api/restaurants/:id ───────────────────────────────────────────────
 
 describe("DELETE /api/restaurants/:id", () => {
-  let agent: ReturnType<typeof supertest>;
+  let agent: RequestAgent;
   let pool: PgPool;
 
   before(async () => {
@@ -80,7 +80,7 @@ describe("DELETE /api/restaurants/:id", () => {
 // ── GET /api/restaurants/needing-menu-check ───────────────────────────────────
 
 describe("GET /api/restaurants/needing-menu-check", () => {
-  let agent: ReturnType<typeof supertest>;
+  let agent: RequestAgent;
   let pool: PgPool;
 
   before(async () => {
@@ -119,7 +119,7 @@ describe("GET /api/restaurants/needing-menu-check", () => {
 // ── PUT /api/restaurants/:id/menu ─────────────────────────────────────────────
 
 describe("PUT /api/restaurants/:id/menu", () => {
-  let agent: ReturnType<typeof supertest>;
+  let agent: RequestAgent;
   let pool: PgPool;
   let restaurantId: number;
 

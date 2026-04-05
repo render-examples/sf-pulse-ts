@@ -1,8 +1,8 @@
 import { describe, it, before } from "node:test";
 import assert from "node:assert/strict";
-import supertest from "supertest";
 import type { Pool as PgPool } from "pg";
 import { createApp } from "../app.js";
+import { makeRequestAgent, type RequestAgent } from "../test-agent.js";
 import { createTestDb } from "../test-helpers.js";
 
 const restaurant = {
@@ -16,13 +16,13 @@ const restaurant = {
 
 function makeAgent(pool: PgPool) {
   const { app } = createApp(pool);
-  return supertest(app);
+  return makeRequestAgent(app);
 }
 
 // ── GET /api/updates + /api/updates/last-updated ──────────────────────────────
 
 describe("GET /api/updates and /api/updates/last-updated", () => {
-  let agent: ReturnType<typeof supertest>;
+  let agent: RequestAgent;
   let pool: PgPool;
 
   before(async () => {
