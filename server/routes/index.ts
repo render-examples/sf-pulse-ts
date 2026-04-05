@@ -7,6 +7,7 @@ import { cronRoutes } from "./cron.js";
 import { pushRoutes } from "./push.js";
 import { updateRoutes } from "./updates.js";
 import { sseRoutes } from "./sse.js";
+import { rssRoutes } from "./rss.js";
 
 export function registerRoutes(_server: Server, app: Express, pool?: Pool): void {
   app.use("/api/restaurants", restaurantRoutes(pool));
@@ -15,4 +16,5 @@ export function registerRoutes(_server: Server, app: Express, pool?: Pool): void
   app.use("/api/push", pushRoutes(pool));
   app.use("/api/updates", updateRoutes(pool));
   app.use("/api/events-stream", sseRoutes());
+  app.use("/api/rss.xml", rssRoutes(pool));
 }

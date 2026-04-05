@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { parseDate } from "./dates.js";
+import { parseDate, isUpcoming } from "./dates.js";
 
 describe("parseDate()", () => {
   it("parses a month+year string", () => {
@@ -51,5 +51,31 @@ describe("parseDate()", () => {
     const d = parseDate("April 1, 2026")!;
     assert.equal(d.getUTCMonth(), 3);
     assert.equal(d.getUTCDate(), 1);
+  });
+});
+
+describe("isUpcoming", () => {
+  it("returns true for 'Spring 2026 (upcoming)'", () => {
+    assert.ok(isUpcoming("Spring 2026 (upcoming)"));
+  });
+
+  it("returns true for 'TBD'", () => {
+    assert.ok(isUpcoming("TBD"));
+  });
+
+  it("returns true for 'TBA'", () => {
+    assert.ok(isUpcoming("TBA"));
+  });
+
+  it("returns true for 'Coming Soon'", () => {
+    assert.ok(isUpcoming("Coming Soon"));
+  });
+
+  it("returns false for a normal past date", () => {
+    assert.ok(!isUpcoming("March 2026"));
+  });
+
+  it("returns false for a future date without upcoming keyword", () => {
+    assert.ok(!isUpcoming("December 2026"));
   });
 });

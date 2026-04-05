@@ -1,6 +1,9 @@
 /* ─── Layout ─────────────────────────────────────────────────────────────── */
 .page {
-  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100dvh;
+  overflow: hidden;
 }
 
 /* ─── Header ─────────────────────────────────────────────────────────────── */
@@ -100,9 +103,16 @@
 
 /* ─── Main ───────────────────────────────────────────────────────────────── */
 .main {
+  display: grid;
+  /* rows: tabs | section (stretches) | footer | ios-banner */
+  grid-template-rows: auto 1fr auto auto;
   max-width: 960px;
+  width: 100%;
   margin: 0 auto;
-  padding: 24px 20px 48px;
+  padding: 24px 20px 0;
+  overflow: hidden;
+  min-height: 0;
+  box-sizing: border-box;
 }
 
 /* ─── Tabs ───────────────────────────────────────────────────────────────── */
@@ -146,6 +156,14 @@
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+/* Section wrapping sectionHeader + tableCard — must pass height to tableCard */
+.section {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* ─── Section header ─────────────────────────────────────────────────────── */
@@ -217,15 +235,18 @@
   border-radius: var(--radius);
   background: var(--surface);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
-/* Timeline scroll container — fills remaining viewport height */
+/* Timeline scroll container — fills remaining space inside the grid */
 .timelineScroll {
-  height: calc(100dvh - 140px);
   overflow-y: auto;
   overflow-x: auto;
   overscroll-behavior: contain;
   scroll-behavior: auto;
+  min-height: 0;
 }
 
 /* TODAY divider row */
@@ -422,8 +443,9 @@ td {
 
 /* ─── Footer ─────────────────────────────────────────────────────────────── */
 .footer {
-  margin-top: 32px;
+  margin-top: 16px;
   padding-top: 16px;
+  padding-bottom: 16px;
   border-top: 1px solid var(--border);
   font-size: 12px;
   color: var(--text-2);

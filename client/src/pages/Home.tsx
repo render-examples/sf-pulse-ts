@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from "react";
 import s from "./Home.module.css";
 import type { Restaurant, SFEvent, DietaryFlags } from "../types";
-import { parseDate, todayUTC } from "../lib/dates";
+import { parseDate, todayUTC, isUpcoming } from "../lib/dates";
 
 /* ── Types ─────────────────────────────────────────────────────────────── */
 interface Toast { id: number; title: string; body?: string }
@@ -187,16 +187,24 @@ function buildTimeline<T>(
   getDateStr: (item: T) => string
 ): TimelineRow<T>[] {
   const today = todayUTC().getTime();
+  // TODAY marker sorts after all past/present items but before any upcoming.
+  // Use today + 0.5ms so same-day items appear above TODAY.
+  const todaySortMs = today + 0.5;
 
   const dataRows: TimelineRow<T>[] = items.map((item) => {
-    const d = parseDate(getDateStr(item));
-    return { kind: "data", item, sortMs: d ? d.getTime() : today };
+    const dateStr = getDateStr(item);
+    // Items explicitly marked upcoming always sort after TODAY, regardless of
+    // what fuzzy date the string parses to.
+    if (isUpcoming(dateStr)) {
+      return { kind: "data", item, sortMs: Infinity };
+    }
+    const d = parseDate(dateStr);
+    return { kind: "data", item, sortMs: d ? d.getTime() : todaySortMs };
   });
 
-  // Insert the TODAY marker at its correct chronological position.
   const allRows: TimelineRow<T>[] = [
     ...dataRows,
-    { kind: "today", sortMs: today },
+    { kind: "today", sortMs: todaySortMs },
   ];
 
   allRows.sort((a, b) => a.sortMs - b.sortMs);
@@ -408,7 +416,7 @@ export default function Home() {
   });
 
   const { data: lastUpdated } = useQuery<{ lastUpdated: string | null }>({
-    queryKey: ["/api/last-updated"],
+    queryKey: ["/api/updates/last-updated"],
   });
 
   // Register service worker
@@ -424,13 +432,13 @@ export default function Home() {
 
     es.addEventListener("restaurants", () => {
       qc.invalidateQueries({ queryKey: ["/api/restaurants"] });
-      qc.invalidateQueries({ queryKey: ["/api/last-updated"] });
+      qc.invalidateQueries({ queryKey: ["/api/updates/last-updated"] });
       addToast("Restaurants updated", "New openings have been added.");
     });
 
     es.addEventListener("events", () => {
       qc.invalidateQueries({ queryKey: ["/api/events"] });
-      qc.invalidateQueries({ queryKey: ["/api/last-updated"] });
+      qc.invalidateQueries({ queryKey: ["/api/updates/last-updated"] });
       addToast("Events updated", "New Mission District events added.");
     });
 
@@ -499,7 +507,7 @@ export default function Home() {
 
         {/* Restaurants */}
         {tab === "restaurants" && (
-          <section>
+          <section className={s.section}>
             <div className={s.sectionHeader}>
               <div>
                 <h2 className={s.sectionTitle}>New SF Restaurants</h2>
@@ -535,7 +543,7 @@ export default function Home() {
 
         {/* Events */}
         {tab === "events" && (
-          <section>
+          <section className={s.section}>
             <div className={s.sectionHeader}>
               <div>
                 <h2 className={s.sectionTitle}>Mission District Events</h2>

@@ -27,6 +27,15 @@ const MONTH_INDEX: Record<string, number> = {
   july: 6, august: 7, september: 8, october: 9, november: 10, december: 11,
 };
 
+/**
+ * Returns true when the date string explicitly marks the item as upcoming/future.
+ * Used to ensure upcoming items always sort after the TODAY marker regardless
+ * of the fuzzy parsed date.
+ */
+export function isUpcoming(raw: string): boolean {
+  return /upcoming|tbd|tba|coming soon/i.test(raw);
+}
+
 export function parseDate(raw: string): Date | null {
   const s = raw.toLowerCase().trim();
 
