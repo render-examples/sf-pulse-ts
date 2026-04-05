@@ -7,7 +7,7 @@
 import express, { type Request, type Response, type NextFunction } from "express";
 import { createServer, type Server } from "http";
 import type { Pool } from "pg";
-import { registerRoutes } from "./routes.js";
+import { registerRoutes } from "./routes/index.js";
 
 export interface AppInstance {
   app: ReturnType<typeof express>;
