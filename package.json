@@ -4,7 +4,7 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "postinstall": "patch-package",
+    "postinstall": "node --input-type=commonjs -e \"if (process.env.NODE_ENV !== 'production') require('child_process').execSync('patch-package', {stdio: 'inherit'})\"",
     "dev": "NODE_ENV=development tsx server/index.ts",
     "build": "tsx bin/build.ts",
     "migrate": "tsx bin/migrate.ts",
