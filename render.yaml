@@ -48,4 +48,4 @@ services:
         fromService:
           name: sf-pulse
           type: web
-          property: host
+          property: hostport

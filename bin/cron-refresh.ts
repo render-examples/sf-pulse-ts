@@ -15,9 +15,16 @@ import { readFile, writeFile, mkdir } from "fs/promises";
 import { existsSync } from "fs";
 import type { DietaryFlags, DietaryFlag } from "../server/storage.js";
 
-const APP_URL = process.env.APP_URL
-  ? `https://${process.env.APP_URL}`
-  : "http://localhost:5000";
+export function resolveAppUrl(raw = process.env.APP_URL, port = process.env.PORT): string {
+  if (!raw) return `http://localhost:${port ?? "5000"}`;
+
+  const normalized = raw.trim().replace(/\/+$/, "");
+  if (/^https?:\/\//i.test(normalized)) return normalized;
+  if (/^[^/]+:\d+$/.test(normalized)) return `http://${normalized}`;
+  return `https://${normalized}`;
+}
+
+const APP_URL = resolveAppUrl();
 const CRON_SECRET = process.env.CRON_SECRET ?? "";
 const STATE_DIR = "/var/data";
 const STATE_FILE = `${STATE_DIR}/sf-pulse-state.json`;
