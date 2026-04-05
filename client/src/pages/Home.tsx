@@ -4,6 +4,9 @@ import s from "./Home.module.css";
 import type { Restaurant, SFEvent, DietaryFlags } from "../types";
 import { parseDate, todayUTC, isUpcoming } from "../lib/dates";
 
+const useIsomorphicLayoutEffect =
+  typeof window === "undefined" ? useEffect : useLayoutEffect;
+
 /* ── Types ─────────────────────────────────────────────────────────────── */
 interface Toast { id: number; title: string; body?: string }
 
@@ -225,7 +228,7 @@ function useScrollToToday(
   todayRef: React.RefObject<HTMLTableRowElement | null>,
   deps: unknown[]
 ) {
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     const container = containerRef.current;
     const todayEl = todayRef.current;
     if (!container || !todayEl) return;

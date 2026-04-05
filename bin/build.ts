@@ -1,6 +1,8 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
 import { rm, readFile, cp } from "fs/promises";
+import path from "path";
+import viteConfig from "../vite.config";
 
 // Deps bundled into server binaries (everything else is external)
 const bundled = new Set(["express", "pg", "web-push", "zod"]);
@@ -43,20 +45,23 @@ async function buildAll() {
   }
 
   // SSR server bundle: React + react-dom/server bundled in so the Node process
-  // can renderToString without needing the client node_modules layout.
+  // must be built by Vite as well so CSS module class names stay aligned with
+  // the client bundle referenced from dist/public/index.html.
   console.log("building SSR server bundle...");
-  await esbuild({
-    entryPoints: ["client/src/entry-server.tsx"],
-    platform: "node",
-    bundle: true,
-    format: "cjs",
-    outfile: "dist/public/ssr-server.cjs",
-    // React and react-dom/server must be bundled (they're ESM-first in v19);
-    // external only deps that will be available in the Node runtime.
-    external: ["pg", "web-push", "express"],
-    logLevel: "info",
-    jsx: "automatic",
-    define: { "import.meta.dirname": "__dirname" },
+  await viteBuild({
+    ...viteConfig,
+    build: {
+      ...viteConfig.build,
+      ssr: path.resolve(import.meta.dirname, "..", "client/src/entry-server.tsx"),
+      outDir: path.resolve(import.meta.dirname, "..", "dist/public"),
+      emptyOutDir: false,
+      rollupOptions: {
+        output: {
+          entryFileNames: "ssr-server.cjs",
+          format: "cjs",
+        },
+      },
+    },
   });
 
   console.log("copying migrations...");
