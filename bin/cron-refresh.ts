@@ -307,7 +307,7 @@ async function main() {
       console.log(`[cron] ${toCheck.length} restaurants need menu check`);
 
       // Process sequentially to avoid hammering search engines
-      for (const r of toCheck.slice(0, 10)) {
+      for (const r of toCheck) {
         try {
           console.log(`[cron] checking menu for: ${r.name}`);
           const { menuUrl, dietaryFlags } = await discoverMenu(r.name);
