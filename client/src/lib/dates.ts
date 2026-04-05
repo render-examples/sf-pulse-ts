@@ -14,14 +14,6 @@
  * Returns `null` only if no year is present at all.
  */
 
-const SEASON_MONTH: Record<string, number> = {
-  spring: 3, // April — mid-spring
-  summer: 6, // July — mid-summer
-  fall:   9, // October
-  autumn: 9,
-  winter: 0, // January
-};
-
 const MONTH_INDEX: Record<string, number> = {
   january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
   july: 6, august: 7, september: 8, october: 9, november: 10, december: 11,
@@ -48,20 +40,20 @@ function parseDateRange(raw: string): DateRange | null {
 
   if (s.includes("spring")) {
     return {
-      start: new Date(Date.UTC(year, 2, 1)),
-      end: endOfMonthUTC(year, 4),
+      start: new Date(Date.UTC(year, 3, 1)),
+      end: endOfMonthUTC(year, 5),
     };
   }
   if (s.includes("summer")) {
     return {
-      start: new Date(Date.UTC(year, 5, 1)),
-      end: endOfMonthUTC(year, 7),
+      start: new Date(Date.UTC(year, 6, 1)),
+      end: endOfMonthUTC(year, 8),
     };
   }
   if (s.includes("fall") || s.includes("autumn")) {
     return {
-      start: new Date(Date.UTC(year, 8, 1)),
-      end: endOfMonthUTC(year, 10),
+      start: new Date(Date.UTC(year, 9, 1)),
+      end: endOfMonthUTC(year, 11),
     };
   }
   if (s.includes("winter")) {
@@ -87,7 +79,10 @@ function parseDateRange(raw: string): DateRange | null {
   }
 
   const dayRangeMatch = s.match(
-    new RegExp(`(?:${MONTH_PATTERN})\\s+(\\d{1,2})(?:\\s*[–-]\\s*(\\d{1,2}))?`, "i"),
+    new RegExp(
+      `(?:${MONTH_PATTERN})\\s+(\\d{1,2})(?!\\d)(?:\\s*[–-]\\s*(\\d{1,2})(?!\\d))?`,
+      "i",
+    ),
   );
   if (dayRangeMatch) {
     const startDay = parseInt(dayRangeMatch[1], 10);

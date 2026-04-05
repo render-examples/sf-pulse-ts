@@ -15,6 +15,8 @@ import {
   parseRss,
   parseFAMSFPage,
   parseCalAcademyPage,
+  parseEaterArticle,
+  fetchEaterSF,
   fetchFuncheap,
   resolveAppUrl,
 } from "./cron-refresh.js";
@@ -353,6 +355,87 @@ describe("parseRss()", () => {
     assert.equal(items.length, 1);
     assert.ok(!items[0].title.includes("<b>"), "should strip HTML tags from title");
     assert.ok(items[0].title.includes("Bold Title"));
+  });
+});
+
+describe("parseEaterArticle()", () => {
+  it("extracts restaurant names from subheadings in roundup articles", () => {
+    const html = `
+      <article>
+        <h2>Alpha Cafe</h2>
+        <p>Alpha Cafe opens in the Mission this week.</p>
+        <h2>Beta Bistro</h2>
+        <p>Beta Bistro is now open downtown.</p>
+        <h2>More From Eater SF</h2>
+      </article>
+    `;
+
+    const results = parseEaterArticle(
+      html,
+      [],
+      "https://sf.eater.com/article/alpha-beta",
+      "April 2026",
+    );
+
+    assert.deepEqual(
+      results.map((result) => result.name),
+      ["Alpha Cafe", "Beta Bistro"],
+    );
+    assert.ok(
+      results.every(
+        (result) => result.source_url === "https://sf.eater.com/article/alpha-beta",
+      ),
+    );
+  });
+});
+
+describe("fetchEaterSF()", () => {
+  it("parses linked roundup articles instead of inserting the article title as a restaurant", async () => {
+    const originalFetch = globalThis.fetch;
+    const rssXml = `<?xml version="1.0"?>
+      <feed xmlns="http://www.w3.org/2005/Atom">
+        <entry>
+          <title type="html"><![CDATA[14 Restaurant Openings to Know About Right Now]]></title>
+          <link rel="alternate" href="https://sf.eater.com/article/list"/>
+          <published>2026-04-03T18:05:42-04:00</published>
+          <summary type="html"><![CDATA[A running list of new spots.]]></summary>
+        </entry>
+      </feed>`;
+    const articleHtml = `
+      <article>
+        <h2>Alpha Cafe</h2>
+        <p>Alpha Cafe opens in the Mission.</p>
+        <h2>Beta Bistro</h2>
+        <p>Beta Bistro is now open in SoMa.</p>
+      </article>
+    `;
+
+    globalThis.fetch = (async (input: string | URL | RequestInfo) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+      if (url === "https://sf.eater.com/rss/index.xml") {
+        return new Response(rssXml, { status: 200 });
+      }
+      if (url === "https://sf.eater.com/article/list") {
+        return new Response(articleHtml, { status: 200 });
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    }) as typeof fetch;
+
+    try {
+      const results = await fetchEaterSF([]);
+      assert.deepEqual(
+        results.map((result) => result.name),
+        ["Alpha Cafe", "Beta Bistro"],
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 

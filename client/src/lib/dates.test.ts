@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { parseDate, isUpcoming } from "./dates.js";
+import { parseDate, isUpcoming, isTodayOrPotentialFuture } from "./dates.js";
 
 describe("parseDate()", () => {
   it("parses a month+year string", () => {
@@ -77,5 +77,25 @@ describe("isUpcoming", () => {
 
   it("returns false for a future date without upcoming keyword", () => {
     assert.ok(!isUpcoming("December 2026"));
+  });
+});
+
+describe("isTodayOrPotentialFuture()", () => {
+  const reference = new Date(Date.UTC(2026, 3, 5));
+
+  it("treats a current month as potentially future", () => {
+    assert.ok(isTodayOrPotentialFuture("April 2026", reference));
+  });
+
+  it("treats an exact past date as past", () => {
+    assert.ok(!isTodayOrPotentialFuture("April 1, 2026", reference));
+  });
+
+  it("treats today as today-or-future", () => {
+    assert.ok(isTodayOrPotentialFuture("April 5, 2026", reference));
+  });
+
+  it("treats missing precision as potentially future", () => {
+    assert.ok(isTodayOrPotentialFuture("2026", reference));
   });
 });

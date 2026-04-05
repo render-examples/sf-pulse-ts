@@ -140,6 +140,20 @@ export async function fetchRss(url: string): Promise<RssItem[]> {
   }
 }
 
+async function fetchPageHtml(url: string): Promise<string> {
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": "sf-pulse-cron/1.0" },
+      signal: AbortSignal.timeout(10_000),
+      redirect: "follow",
+    });
+    if (!res.ok) return "";
+    return res.text();
+  } catch {
+    return "";
+  }
+}
+
 // ── Type definitions ──────────────────────────────────────────────────────────
 
 export type NewRestaurant = {
@@ -191,6 +205,35 @@ export function extractRestaurants(
   return results;
 }
 
+function normalizeRestaurantName(name: string): string {
+  return name
+    .replace(/^[\s"'“”‘’]+|[\s"'“”‘’]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function addRestaurantCandidate(
+  results: NewRestaurant[],
+  existing: string[],
+  name: string,
+  openedDate: string,
+  sourceUrl: string | null,
+) {
+  const normalized = normalizeRestaurantName(name);
+  if (normalized.length < 3) return;
+  if (existing.includes(normalized.toLowerCase())) return;
+  if (results.find((r) => r.name.toLowerCase() === normalized.toLowerCase())) return;
+
+  results.push({
+    name: normalized,
+    neighborhood: "San Francisco",
+    cuisine: "New opening",
+    address: null,
+    opened_date: openedDate,
+    source_url: sourceUrl,
+  });
+}
+
 export function extractEvents(text: string, existing: string[]): NewEvent[] {
   const results: NewEvent[] = [];
   const months =
@@ -223,8 +266,63 @@ export function extractEvents(text: string, existing: string[]): NewEvent[] {
 // ── Source fetchers ───────────────────────────────────────────────────────────
 
 const OPENING_KEYWORDS =
-  /\b(?:opens?|opened|opening|debuts?|now open|coming soon|new restaurant|grand opening)\b/i;
+  /\b(?:opens?|opened|openings?|debuts?|now open|coming soon|new restaurant|grand opening)\b/i;
 const THREE_MONTHS_MS = 90 * 24 * 60 * 60 * 1000;
+
+function isEaterRoundupArticle(title: string, description: string): boolean {
+  const combined = `${title} ${description}`;
+  return /\b(?:openings|restaurants|bars|roundup|guide|map|where to eat)\b/i.test(
+    combined,
+  );
+}
+
+function isLikelyRestaurantHeading(text: string): boolean {
+  const normalized = normalizeRestaurantName(text);
+  if (!/\p{L}/u.test(normalized)) return false;
+  if (normalized.length < 3 || normalized.length > 60) return false;
+  if (normalized.split(/\s+/).length > 8) return false;
+  if (
+    /\b(?:more from eater|newsletter|share this story|map|where to eat|read more|comments?|latest|photos?|videos?|openings|restaurants|bars)\b/i.test(
+      normalized,
+    )
+  ) {
+    return false;
+  }
+  return /\p{Lu}/u.test(normalized);
+}
+
+export function parseEaterArticle(
+  html: string,
+  existing: string[],
+  sourceUrl: string | null,
+  openedDate: string,
+): NewRestaurant[] {
+  const results: NewRestaurant[] = [];
+  const headingRe = /<h[234][^>]*>([\s\S]*?)<\/h[234]>/gi;
+
+  let match: RegExpExecArray | null;
+  while ((match = headingRe.exec(html)) !== null) {
+    const heading = stripHtml(match[1]);
+    if (!isLikelyRestaurantHeading(heading)) continue;
+    addRestaurantCandidate(results, existing, heading, openedDate, sourceUrl);
+  }
+
+  const knownNames = [
+    ...existing,
+    ...results.map((result) => result.name.toLowerCase()),
+  ];
+  for (const restaurant of extractRestaurants(stripHtml(html), knownNames)) {
+    addRestaurantCandidate(
+      results,
+      existing,
+      restaurant.name,
+      openedDate,
+      sourceUrl,
+    );
+  }
+
+  return results;
+}
 
 /**
  * Is this item recent enough to consider? (within ~3 months)
@@ -253,45 +351,34 @@ export async function fetchEaterSF(
     const combined = `${item.title} ${item.description}`;
     if (!OPENING_KEYWORDS.test(combined)) continue;
 
-    // Try to extract restaurant names from the title using the opening pattern.
-    const fromText = extractRestaurants(
-      // Wrap title in quotes so the regex can match e.g. «Foo opens»
-      `"${item.title}" opens`,
-      existing,
-    );
+    const knownNames = [
+      ...existing,
+      ...results.map((result) => result.name.toLowerCase()),
+    ];
+    const articleRestaurants = item.link
+      ? parseEaterArticle(
+          await fetchPageHtml(item.link),
+          knownNames,
+          item.link || null,
+          month,
+        )
+      : [];
 
-    if (fromText.length > 0) {
-      for (const r of fromText) {
-        r.source_url = item.link || null;
-        if (
-          !existing.includes(r.name.toLowerCase()) &&
-          !results.find((x) => x.name === r.name)
-        ) {
-          results.push(r);
-        }
-      }
-    } else {
-      // Fall back: use the article title as the restaurant name.
-      // Trim trailing punctuation and common suffixes.
-      const name = item.title
-        .replace(/\s*[-–|:,].*$/, "")
-        .replace(/\s+(?:Opens?|Opening|Debuts?|Now Open).*/i, "")
-        .trim();
-      if (
-        name.length >= 3 &&
-        !existing.includes(name.toLowerCase()) &&
-        !results.find((x) => x.name === name)
-      ) {
-        results.push({
-          name,
-          neighborhood: "San Francisco",
-          cuisine: "New opening",
-          address: null,
-          opened_date: month,
-          source_url: item.link || null,
-        });
-      }
+    if (articleRestaurants.length > 0) {
+      results.push(...articleRestaurants);
+      continue;
     }
+
+    if (isEaterRoundupArticle(item.title, item.description)) {
+      continue;
+    }
+
+    // Fall back only for single-restaurant stories.
+    const name = item.title
+      .replace(/\s*[-–|:,].*$/, "")
+      .replace(/\s+(?:Opens?|Opened|Opening|Debuts?|Now Open).*/i, "")
+      .trim();
+    addRestaurantCandidate(results, existing, name, month, item.link || null);
   }
 
   return results;

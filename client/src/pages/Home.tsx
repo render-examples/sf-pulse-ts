@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from "react";
 import s from "./Home.module.css";
 import type { Restaurant, SFEvent, DietaryFlags } from "../types";
-import { parseDate, todayUTC, isUpcoming } from "../lib/dates";
+import { buildTimeline } from "../lib/timeline";
 
 const useIsomorphicLayoutEffect =
   typeof window === "undefined" ? useEffect : useLayoutEffect;
@@ -176,48 +176,6 @@ function usePush() {
   return { subscribed, supported, loading, subscribe, unsubscribe };
 }
 
-/* ── Timeline helpers ───────────────────────────────────────────────────── */
-
-/**
- * A row in the unified timeline — either a data row or the synthetic TODAY marker.
- */
-type TimelineRow<T> =
-  | { kind: "data"; item: T; sortMs: number }
-  | { kind: "today"; sortMs: number };
-
-function buildTimeline<T>(
-  items: T[],
-  getDateStr: (item: T) => string
-): TimelineRow<T>[] {
-  const today = todayUTC().getTime();
-  // TODAY marker sorts after all past/present items but before any upcoming.
-  // Use today + 0.5ms so same-day items appear above TODAY.
-  const todaySortMs = today + 0.5;
-
-  const dataRows: TimelineRow<T>[] = items.map((item) => {
-    const dateStr = getDateStr(item);
-    // Items explicitly marked upcoming always sort after TODAY, regardless of
-    // what fuzzy date the string parses to.
-    if (isUpcoming(dateStr)) {
-      return { kind: "data", item, sortMs: Infinity };
-    }
-    const d = parseDate(dateStr);
-    return { kind: "data", item, sortMs: d ? d.getTime() : todaySortMs };
-  });
-
-  const allRows: TimelineRow<T>[] = [
-    ...dataRows,
-    { kind: "today", sortMs: todaySortMs },
-  ];
-
-  allRows.sort((a, b) => {
-    if (a.sortMs !== b.sortMs) return a.sortMs - b.sortMs;
-    if (a.kind === b.kind) return 0;
-    return a.kind === "today" ? -1 : 1;
-  });
-  return allRows;
-}
-
 /* ── useScrollToToday ───────────────────────────────────────────────────── */
 /**
  * After layout, scroll the TODAY row to the vertical center of the container.
@@ -278,7 +236,7 @@ function RestaurantTimeline({ data, filter }: { data: Restaurant[]; filter: stri
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, i) => {
+          {rows.map((row) => {
             if (row.kind === "today") {
               return (
                 <tr key="__today__" ref={todayRef} className={s.todayRow}>
@@ -360,7 +318,7 @@ function EventTimeline({ data, filter }: { data: SFEvent[]; filter: string }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, i) => {
+          {rows.map((row) => {
             if (row.kind === "today") {
               return (
                 <tr key="__today__" ref={todayRef} className={s.todayRow}>
