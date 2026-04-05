@@ -8,40 +8,48 @@
  *
  * Applied migrations are tracked in the `schema_migrations` table.
  * Running migrate() is idempotent — already-applied versions are skipped.
+ *
+ * Accepts an optional Pool so tests can inject pg-mem without touching
+ * the real DATABASE_URL.
  */
 import { readdir, readFile } from "fs/promises";
 import path from "path";
-import { pool } from "./db.js";
+import type { Pool } from "pg";
 
 // Works in both ESM (import.meta.url) and CJS bundles (__dirname)
-const MIGRATIONS_DIR = path.resolve(
+export const MIGRATIONS_DIR = path.resolve(
   typeof __dirname !== "undefined"
     ? __dirname
     : path.dirname(new URL(import.meta.url).pathname),
   "../migrations"
 );
 
-async function ensureMigrationsTable(): Promise<void> {
+async function ensureMigrationsTable(pool: Pool): Promise<void> {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
-      version TEXT PRIMARY KEY,
+      version    TEXT        PRIMARY KEY,
       applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
 }
 
-async function appliedVersions(): Promise<Set<string>> {
+async function appliedVersions(pool: Pool): Promise<Set<string>> {
   const { rows } = await pool.query<{ version: string }>(
     "SELECT version FROM schema_migrations ORDER BY version"
   );
   return new Set(rows.map((r) => r.version));
 }
 
-export async function migrate(): Promise<void> {
-  await ensureMigrationsTable();
-  const applied = await appliedVersions();
+export async function migrate(pool?: Pool, migrationsDir?: string): Promise<void> {
+  // Lazy-import the real pool only when not injected, so tests never need
+  // DATABASE_URL set.
+  const p: Pool = pool ?? (await import("./db.js")).pool;
+  const dir = migrationsDir ?? MIGRATIONS_DIR;
 
-  const files = (await readdir(MIGRATIONS_DIR))
+  await ensureMigrationsTable(p);
+  const applied = await appliedVersions(p);
+
+  const files = (await readdir(dir))
     .filter((f) => f.endsWith(".sql"))
     .sort();
 
@@ -51,8 +59,8 @@ export async function migrate(): Promise<void> {
       continue;
     }
 
-    const sql = await readFile(path.join(MIGRATIONS_DIR, file), "utf-8");
-    const client = await pool.connect();
+    const sql = await readFile(path.join(dir, file), "utf-8");
+    const client = await p.connect();
     try {
       await client.query("BEGIN");
       await client.query(sql);

@@ -1,7 +1,7 @@
 import { migrate } from "../server/migrate.js";
 import { pool } from "../server/db.js";
 
-migrate()
+migrate(pool)
   .then(() => {
     console.log("[migrate] done");
     return pool.end();

@@ -2,11 +2,26 @@ import pg from "pg";
 
 const { Pool } = pg;
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL is required");
+// Defer the DATABASE_URL check to first use so that test files can import
+// storage/routes modules without DATABASE_URL set (they inject a pg-mem pool).
+let _pool: InstanceType<typeof Pool> | undefined;
+
+export function getPool(): InstanceType<typeof Pool> {
+  if (!_pool) {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL is required");
+    }
+    _pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  }
+  return _pool;
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+// Convenience proxy — reads like a real Pool but initialises lazily.
+export const pool = new Proxy({} as InstanceType<typeof Pool>, {
+  get(_target, prop) {
+    return (getPool() as unknown as Record<string | symbol, unknown>)[prop];
+  },
+});
 
 export async function query<T = Record<string, unknown>>(
   sql: string,

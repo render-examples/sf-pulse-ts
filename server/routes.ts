@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import type { Server } from "http";
+import type { Pool } from "pg";
 import webpush from "web-push";
 import * as storage from "./storage.js";
 import { addClient, broadcast } from "./sse.js";
@@ -17,8 +18,8 @@ webpush.setVapidDetails(
   VAPID_PRIVATE_KEY
 );
 
-async function pushToAll(title: string, body: string): Promise<void> {
-  const subs = await storage.getSubscriptions();
+async function pushToAll(title: string, body: string, pool?: Pool): Promise<void> {
+  const subs = await storage.getSubscriptions(pool);
   const sends = subs.map((sub) =>
     webpush
       .sendNotification(
@@ -26,14 +27,13 @@ async function pushToAll(title: string, body: string): Promise<void> {
         JSON.stringify({ title, body })
       )
       .catch(() => {
-        // Remove dead subscriptions silently
-        storage.removeSubscription(sub.endpoint);
+        storage.removeSubscription(sub.endpoint, pool);
       })
   );
   await Promise.allSettled(sends);
 }
 
-export function registerRoutes(server: Server, app: Express): void {
+export function registerRoutes(server: Server, app: Express, pool?: Pool): void {
   // ── SSE stream ─────────────────────────────────────────────────────────────
   app.get("/api/events-stream", (req, res) => {
     res.setHeader("Content-Type", "text/event-stream");
@@ -49,22 +49,22 @@ export function registerRoutes(server: Server, app: Express): void {
 
   // ── Restaurants ────────────────────────────────────────────────────────────
   app.get("/api/restaurants", async (_req, res) => {
-    res.json(await storage.getRestaurants());
+    res.json(await storage.getRestaurants(pool));
   });
 
   app.delete("/api/restaurants/:id", async (req, res) => {
-    await storage.deleteRestaurant(Number(req.params.id));
+    await storage.deleteRestaurant(Number(req.params.id), pool);
     broadcast("restaurants", { action: "refresh" });
     res.json({ ok: true });
   });
 
   // ── Events ─────────────────────────────────────────────────────────────────
   app.get("/api/events", async (_req, res) => {
-    res.json(await storage.getEvents());
+    res.json(await storage.getEvents(pool));
   });
 
   app.delete("/api/events/:id", async (req, res) => {
-    await storage.deleteEvent(Number(req.params.id));
+    await storage.deleteEvent(Number(req.params.id), pool);
     broadcast("events", { action: "refresh" });
     res.json({ ok: true });
   });
@@ -86,14 +86,14 @@ export function registerRoutes(server: Server, app: Express): void {
     const newEvents: string[] = [];
 
     for (const r of restaurants) {
-      const added = await storage.addRestaurant(r);
-      await storage.recordUpdate("restaurant", added.name, "added");
+      const added = await storage.addRestaurant(r, pool);
+      await storage.recordUpdate("restaurant", added.name, "added", pool);
       newRestaurants.push(added.name);
     }
 
     for (const e of events) {
-      const added = await storage.addEvent(e);
-      await storage.recordUpdate("event", added.title, "added");
+      const added = await storage.addEvent(e, pool);
+      await storage.recordUpdate("event", added.title, "added", pool);
       newEvents.push(added.title);
     }
 
@@ -107,7 +107,7 @@ export function registerRoutes(server: Server, app: Express): void {
       if (newEvents.length)
         lines.push(`${newEvents.length} new event${newEvents.length > 1 ? "s" : ""}: ${newEvents.join(", ")}`);
 
-      await pushToAll("SF Pulse update", lines.join(" · "));
+      await pushToAll("SF Pulse update", lines.join(" · "), pool);
     }
 
     res.json({ added: { restaurants: newRestaurants, events: newEvents } });
@@ -123,24 +123,24 @@ export function registerRoutes(server: Server, app: Express): void {
     if (!endpoint || !keys?.p256dh || !keys?.auth) {
       return res.status(400).json({ error: "Missing endpoint or keys" });
     }
-    const sub = await storage.addSubscription(endpoint, keys);
+    const sub = await storage.addSubscription(endpoint, keys, pool);
     res.json(sub);
   });
 
   app.post("/api/push/unsubscribe", async (req, res) => {
     const { endpoint } = req.body;
     if (!endpoint) return res.status(400).json({ error: "Missing endpoint" });
-    await storage.removeSubscription(endpoint);
+    await storage.removeSubscription(endpoint, pool);
     res.json({ ok: true });
   });
 
   // ── Misc ───────────────────────────────────────────────────────────────────
   app.get("/api/updates", async (_req, res) => {
-    res.json(await storage.getRecentUpdates());
+    res.json(await storage.getRecentUpdates(50, pool));
   });
 
   app.get("/api/last-updated", async (_req, res) => {
-    const updates = await storage.getRecentUpdates(1);
+    const updates = await storage.getRecentUpdates(1, pool);
     res.json({ lastUpdated: updates[0]?.occurred_at ?? null });
   });
 }

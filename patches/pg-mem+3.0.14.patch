@@ -1,0 +1,17 @@
+diff --git a/node_modules/pg-mem/index.js b/node_modules/pg-mem/index.js
+index 15cbc92..c3968c5 100644
+--- a/node_modules/pg-mem/index.js
++++ b/node_modules/pg-mem/index.js
+@@ -11307,6 +11307,12 @@ class ExecuteCreateTable extends exec_utils_1.ExecHelper {
+                     }
+                     // TODO: #collation
+                     (0, utils_1.ignore)(f.collate);
++                    // Column constraints are passed through to declareTable via
++                    // toDeclare.fields — they are not individually inspected here.
++                    // Mark them as consumed so the AST coverage checker does not
++                    // fire a false-positive "Not supported" error, including on
++                    // the no-op path of CREATE TABLE IF NOT EXISTS.
++                    (0, utils_1.ignore)(f.constraints);
+                     const nf = {
+                         ...f,
+                         name: f.name.name,
