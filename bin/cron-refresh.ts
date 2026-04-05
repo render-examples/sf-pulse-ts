@@ -237,16 +237,15 @@ function addRestaurantCandidate(
 
 export function extractEvents(text: string, existing: string[]): NewEvent[] {
   const results: NewEvent[] = [];
-  const months =
-    "January|February|March|April|May|June|July|August|September|October|November|December";
   const pattern = new RegExp(
-    `([A-Z][A-Za-z &:'\\-]{4,60})\\s+(?:on\\s+|[–-]\\s*)?((?:${months})\\s+\\d{1,2}(?:,?\\s+\\d{4})?)`,
+    `([A-Z][A-Za-z &:'’\\-]{4,60}?)\\s+(?:on\\s+|[–-]\\s*)?((?:${MONTH_NAME_PATTERN})\\s+\\d{1,2}(?!\\d)(?:,?\\s+\\d{4})?)`,
     "g",
   );
   let m;
   while ((m = pattern.exec(text)) !== null) {
-    const title = m[1].trim().replace(/\s+/g, " ");
+    const title = normalizeExtractedEventTitle(m[1]);
     const date = m[2].trim();
+    if (!isLikelyFallbackEventTitle(title)) continue;
     if (
       !existing.includes(title.toLowerCase()) &&
       !results.find((e) => e.title === title)
@@ -266,9 +265,24 @@ export function extractEvents(text: string, existing: string[]): NewEvent[] {
 
 // ── Source fetchers ───────────────────────────────────────────────────────────
 
+const MONTH_NAME_PATTERN =
+  "January|February|March|April|May|June|July|August|September|October|November|December";
+const WEEKDAY_PATTERN =
+  "Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday";
 const OPENING_KEYWORDS =
   /\b(?:opens?|opened|openings?|debuts?|now open|coming soon|new restaurant|grand opening)\b/i;
 const THREE_MONTHS_MS = 90 * 24 * 60 * 60 * 1000;
+const GENERIC_RESTAURANT_TITLE_RE =
+  /^(?:more from eater(?: sf)?|newsletter|share this story|map|where to eat|read more|comments?|latest|photos?|videos?|openings|restaurants|bars|see more|more maps(?: in eater sf)?|more in .+|most popular|the latest|eater sf)\s*$/i;
+const DATE_ONLY_RESTAURANT_TITLE_RE = new RegExp(
+  `^(?:(?:${MONTH_NAME_PATTERN})\\s+\\d{1,2}(?:\\s*[–-]\\s*\\d{1,2})?(?:,\\s*\\d{4})?|(?:${MONTH_NAME_PATTERN})\\s+\\d{4})$`,
+  "i",
+);
+const ROUNDUP_LOCATION_PREFIX_RE = /^[A-Z0-9&/.' -]{2,40}\s+—\s+/;
+const ROUNDUP_VENUE_HINT_RE =
+  /\b(?:restaurant|bar|bakery|cafe|café|pub|deli|bistro|eatery|brasserie|brewery|wine bar|food hall|coffee shop|spot|grill|kitchen)\b/i;
+const NEWS_OUTLET_RE =
+  /\b(?:Eater(?: SF)?|Hoodline|East Bay Nosh|Berkeleyside|SFGATE|San Francisco Chronicle|SF Chronicle|San Francisco Standard|Mercury News|Sonoma Magazine)\b/i;
 
 function isEaterRoundupArticle(title: string, description: string): boolean {
   const combined = `${title} ${description}`;
@@ -282,14 +296,84 @@ function isLikelyRestaurantHeading(text: string): boolean {
   if (!/\p{L}/u.test(normalized)) return false;
   if (normalized.length < 3 || normalized.length > 60) return false;
   if (normalized.split(/\s+/).length > 8) return false;
+  if (GENERIC_RESTAURANT_TITLE_RE.test(normalized)) return false;
+  if (DATE_ONLY_RESTAURANT_TITLE_RE.test(normalized)) return false;
+  return /\p{Lu}/u.test(normalized);
+}
+
+function scoreRoundupAnchorCandidate(
+  beforeText: string,
+  afterText: string,
+): number {
+  let score = 0;
+
+  if (/\b(?:opening of|new)\s*$/i.test(beforeText)) score += 4;
+  if (/\b(?:the|a|an)\s+new\s*$/i.test(beforeText)) score += 3;
   if (
-    /\b(?:more from eater|newsletter|share this story|map|where to eat|read more|comments?|latest|photos?|videos?|openings|restaurants|bars)\b/i.test(
-      normalized,
+    /\b(?:restaurant|bar|bakery|cafe|café|pub|deli|bistro|brewery|wine bar|food hall)\s*$/i.test(
+      beforeText,
     )
   ) {
-    return false;
+    score += 2;
   }
-  return /\p{Lu}/u.test(normalized);
+  if (/^\s*(?:is|are|opens?|opened|opening|debuts?|returns?|lands?)\b/i.test(afterText)) {
+    score += 4;
+  }
+  if (ROUNDUP_VENUE_HINT_RE.test(afterText.slice(0, 120))) score += 2;
+  if (/^\s*reports\b/i.test(afterText)) score -= 4;
+
+  return score;
+}
+
+function extractRoundupParagraphRestaurants(
+  html: string,
+  existing: string[],
+  results: NewRestaurant[],
+  openedDate: string,
+  sourceUrl: string | null,
+) {
+  const paragraphRe = /<p\b[^>]*>([\s\S]*?)<\/p>/gi;
+  let paragraphMatch: RegExpExecArray | null;
+
+  while ((paragraphMatch = paragraphRe.exec(html)) !== null) {
+    const paragraphHtml = paragraphMatch[1];
+    const paragraphText = normalizeWhitespace(stripHtml(paragraphHtml));
+    if (!ROUNDUP_LOCATION_PREFIX_RE.test(paragraphText)) continue;
+    if (!OPENING_KEYWORDS.test(paragraphText)) continue;
+
+    const anchorRe = /<a\b[^>]*>([\s\S]*?)<\/a>/gi;
+    let anchorMatch: RegExpExecArray | null;
+    let bestCandidate: { name: string; score: number } | null = null;
+
+    while ((anchorMatch = anchorRe.exec(paragraphHtml)) !== null) {
+      const name = normalizeRestaurantName(stripHtml(anchorMatch[1]));
+      if (!isLikelyRestaurantHeading(name)) continue;
+      if (NEWS_OUTLET_RE.test(name)) continue;
+
+      const beforeText = normalizeWhitespace(
+        stripHtml(paragraphHtml.slice(Math.max(0, anchorMatch.index - 120), anchorMatch.index)),
+      );
+      const anchorEnd = anchorMatch.index + anchorMatch[0].length;
+      const afterText = normalizeWhitespace(
+        stripHtml(paragraphHtml.slice(anchorEnd, anchorEnd + 160)),
+      );
+      const score = scoreRoundupAnchorCandidate(beforeText, afterText);
+      if (score < 4) continue;
+
+      if (!bestCandidate || score > bestCandidate.score) {
+        bestCandidate = { name, score };
+      }
+    }
+
+    if (!bestCandidate) continue;
+    addRestaurantCandidate(
+      results,
+      existing,
+      bestCandidate.name,
+      openedDate,
+      sourceUrl,
+    );
+  }
 }
 
 export function parseEaterArticle(
@@ -307,6 +391,14 @@ export function parseEaterArticle(
     if (!isLikelyRestaurantHeading(heading)) continue;
     addRestaurantCandidate(results, existing, heading, openedDate, sourceUrl);
   }
+
+  extractRoundupParagraphRestaurants(
+    html,
+    existing,
+    results,
+    openedDate,
+    sourceUrl,
+  );
 
   const knownNames = [
     ...existing,
@@ -484,10 +576,6 @@ export async function fetchFuncheap(existing: string[]): Promise<NewEvent[]> {
   return results;
 }
 
-const MONTH_NAME_PATTERN =
-  "January|February|March|April|May|June|July|August|September|October|November|December";
-const WEEKDAY_PATTERN =
-  "Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday";
 const EXACT_EVENT_DATE_PATTERN =
   `(?:(${WEEKDAY_PATTERN}),?\\s+)?` +
   `(?:${MONTH_NAME_PATTERN})\\s+\\d{1,2}(?:\\s*[–-]\\s*\\d{1,2})?(?:,\\s*\\d{4})?`;
@@ -497,9 +585,30 @@ const DATE_ONLY_TITLE_RE = new RegExp(
   `^(?:${EXACT_EVENT_DATE_PATTERN}|(?:${MONTH_NAME_PATTERN})\\s+\\d{4})$`,
   "i",
 );
+const SEARCHISH_EVENT_TITLE_RE =
+  /^(?=.*\b(?:san francisco|golden gate park)\b)(?=.*\b(?:events?|concerts?|calendar|things to do|weekend)\b).*/i;
+const WEEKDAY_ONLY_TITLE_RE = new RegExp(
+  `^(?:${WEEKDAY_PATTERN})(?:\\s+on)?$`,
+  "i",
+);
 
 function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function normalizeExtractedEventTitle(value: string): string {
+  return normalizeWhitespace(value).replace(/\s+on$/i, "");
+}
+
+function isLikelyFallbackEventTitle(title: string): boolean {
+  const normalized = normalizeExtractedEventTitle(title);
+  if (!normalized) return false;
+  if (normalized.length < 4 || normalized.length > 80) return false;
+  if (WEEKDAY_ONLY_TITLE_RE.test(normalized)) return false;
+  if (GENERIC_EVENT_TITLE_RE.test(normalized)) return false;
+  if (DATE_ONLY_TITLE_RE.test(normalized)) return false;
+  if (SEARCHISH_EVENT_TITLE_RE.test(normalized)) return false;
+  return true;
 }
 
 function stripParsingNoiseHtml(html: string): string {

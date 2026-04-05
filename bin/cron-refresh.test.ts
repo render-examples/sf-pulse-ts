@@ -1,11 +1,12 @@
 /**
  * Tests for bin/cron-refresh.ts
  *
- * Covers the pure extraction, HTML-stripping, RSS parsing, and source parser
- * logic without any network calls or file I/O.
+ * Covers extraction, HTML-stripping, RSS parsing, and source parser logic
+ * using pure inputs plus saved copies of live source HTML.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import {
   stripHtml,
   extractRestaurants,
@@ -21,6 +22,16 @@ import {
   resolveAppUrl,
 } from "./cron-refresh.js";
 import type { RssItem } from "./cron-refresh.js";
+
+function readFixture(name: string): string {
+  return fs.readFileSync(
+    new URL(`./fixtures/cron-refresh/${name}`, import.meta.url),
+    "utf8",
+  );
+}
+
+const eaterOpeningsHtml = readFixture("eater-openings-april-2026.html");
+const ddgEventsAnomalyHtml = readFixture("ddg-events-anomaly-page.html");
 
 // ── stripHtml ─────────────────────────────────────────────────────────────────
 
@@ -134,9 +145,6 @@ describe("extractEvents()", () => {
 
   it("deduplicates case-insensitively against existing list", () => {
     const text = "Mission Street Fair on April 15 draws thousands.";
-    // The regex captures 'Mission Street Fair on' as the title (greedy group
-    // consumes 'on' before the date separator). The existing list must match
-    // the actual extracted title.
     const first = extractEvents(text, []);
     assert.ok(first.length >= 1, "should extract at least one entry without dedup");
     const actualTitle = first[0].title.toLowerCase();
@@ -177,6 +185,19 @@ describe("extractEvents()", () => {
   it("returns empty array when no patterns match", () => {
     const results = extractEvents("nothing here", []);
     assert.equal(results.length, 0);
+  });
+
+  it("ignores search-query style text with a month-year suffix", () => {
+    const results = extractEvents(
+      "San Francisco events Golden Gate Park concerts April 2026",
+      [],
+    );
+    assert.deepEqual(results, []);
+  });
+
+  it("ignores weekday-only titles", () => {
+    const results = extractEvents("Sunday April 6, 2026", []);
+    assert.deepEqual(results, []);
   });
 });
 
@@ -387,6 +408,25 @@ describe("parseEaterArticle()", () => {
       ),
     );
   });
+
+  it("parses real Eater openings HTML without inserting date or chrome headings", () => {
+    const results = parseEaterArticle(
+      eaterOpeningsHtml,
+      [],
+      "https://sf.eater.com/restaurant-news/211948/san-francisco-bay-area-restaurant-bar-openings-april-2026",
+      "April 2026",
+    );
+    const names = results.map((result) => result.name);
+
+    assert.ok(names.includes("Ka Kai"));
+    assert.ok(names.includes("Studio Estepan"));
+    assert.ok(names.includes("Tita Becca’s"));
+    assert.ok(names.includes("Causwells"));
+    assert.ok(!names.includes("April 2"));
+    assert.ok(!names.includes("Eater SF"));
+    assert.ok(!names.includes("Most Popular"));
+    assert.ok(!names.includes("The Latest"));
+  });
 });
 
 describe("fetchEaterSF()", () => {
@@ -436,6 +476,13 @@ describe("fetchEaterSF()", () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+});
+
+describe("DuckDuckGo event fallback fixtures", () => {
+  it("does not synthesize events from a saved DuckDuckGo anomaly page", () => {
+    const results = extractEvents(stripHtml(ddgEventsAnomalyHtml), []);
+    assert.deepEqual(results, []);
   });
 });
 
