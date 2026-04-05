@@ -27,6 +27,83 @@ const MONTH_INDEX: Record<string, number> = {
   july: 6, august: 7, september: 8, october: 9, november: 10, december: 11,
 };
 
+type DateRange = {
+  start: Date;
+  end: Date;
+};
+
+const MONTH_PATTERN =
+  "january|february|march|april|may|june|july|august|september|october|november|december";
+
+function endOfMonthUTC(year: number, month: number): Date {
+  return new Date(Date.UTC(year, month + 1, 0));
+}
+
+function parseDateRange(raw: string): DateRange | null {
+  const s = raw.toLowerCase().trim();
+
+  const yearMatch = s.match(/\b(20\d{2})\b/);
+  if (!yearMatch) return null;
+  const year = parseInt(yearMatch[1], 10);
+
+  if (s.includes("spring")) {
+    return {
+      start: new Date(Date.UTC(year, 2, 1)),
+      end: endOfMonthUTC(year, 4),
+    };
+  }
+  if (s.includes("summer")) {
+    return {
+      start: new Date(Date.UTC(year, 5, 1)),
+      end: endOfMonthUTC(year, 7),
+    };
+  }
+  if (s.includes("fall") || s.includes("autumn")) {
+    return {
+      start: new Date(Date.UTC(year, 8, 1)),
+      end: endOfMonthUTC(year, 10),
+    };
+  }
+  if (s.includes("winter")) {
+    return {
+      start: new Date(Date.UTC(year, 0, 1)),
+      end: endOfMonthUTC(year, 1),
+    };
+  }
+
+  let month: number | null = null;
+  for (const [name, idx] of Object.entries(MONTH_INDEX)) {
+    if (s.includes(name)) {
+      month = idx;
+      break;
+    }
+  }
+
+  if (month === null) {
+    return {
+      start: new Date(Date.UTC(year, 0, 1)),
+      end: new Date(Date.UTC(year, 11, 31)),
+    };
+  }
+
+  const dayRangeMatch = s.match(
+    new RegExp(`(?:${MONTH_PATTERN})\\s+(\\d{1,2})(?:\\s*[–-]\\s*(\\d{1,2}))?`, "i"),
+  );
+  if (dayRangeMatch) {
+    const startDay = parseInt(dayRangeMatch[1], 10);
+    const endDay = parseInt(dayRangeMatch[2] ?? dayRangeMatch[1], 10);
+    return {
+      start: new Date(Date.UTC(year, month, startDay)),
+      end: new Date(Date.UTC(year, month, endDay)),
+    };
+  }
+
+  return {
+    start: new Date(Date.UTC(year, month, 1)),
+    end: endOfMonthUTC(year, month),
+  };
+}
+
 /**
  * Returns true when the date string explicitly marks the item as upcoming/future.
  * Used to ensure upcoming items always sort after the TODAY marker regardless
@@ -37,36 +114,7 @@ export function isUpcoming(raw: string): boolean {
 }
 
 export function parseDate(raw: string): Date | null {
-  const s = raw.toLowerCase().trim();
-
-  // Extract year
-  const yearMatch = s.match(/\b(20\d{2})\b/);
-  if (!yearMatch) return null;
-  const year = parseInt(yearMatch[1], 10);
-
-  // Season override
-  for (const [season, month] of Object.entries(SEASON_MONTH)) {
-    if (s.includes(season)) {
-      return new Date(Date.UTC(year, month, 1));
-    }
-  }
-
-  // Find month name
-  let month: number | null = null;
-  for (const [name, idx] of Object.entries(MONTH_INDEX)) {
-    if (s.includes(name)) {
-      month = idx;
-      break;
-    }
-  }
-  if (month === null) return new Date(Date.UTC(year, 0, 1));
-
-  // Find day — "March 3, 2026" / "May 23–24, 2026" → take first 1-2 digit number
-  // after the month name that is NOT part of the year (exclude 4-digit numbers).
-  const dayMatch = s.match(/(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?!\d)/);
-  const day = dayMatch ? parseInt(dayMatch[1], 10) : 1;
-
-  return new Date(Date.UTC(year, month, day));
+  return parseDateRange(raw)?.start ?? null;
 }
 
 /**
@@ -75,6 +123,23 @@ export function parseDate(raw: string): Date | null {
 export function todayUTC(): Date {
   const now = new Date();
   return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+}
+
+/**
+ * Returns true when the date string is today or could still land in the future.
+ * Month-only and season-only values stay below the TODAY divider until their
+ * full possible range has elapsed.
+ */
+export function isTodayOrPotentialFuture(
+  raw: string,
+  reference = todayUTC(),
+): boolean {
+  if (isUpcoming(raw)) return true;
+
+  const range = parseDateRange(raw);
+  if (!range) return true;
+
+  return range.end.getTime() >= reference.getTime();
 }
 
 /**
