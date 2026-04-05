@@ -1,4 +1,4 @@
-import { describe, it, before } from "node:test";
+import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import type { Pool as PgPool } from "pg";
 import { createApp } from "../app.js";
@@ -14,6 +14,7 @@ const restaurant = {
   opened_date: "April 2026",
   source_url: null,
 };
+const cronSecret = "test-secret";
 
 function makeAgent(pool: PgPool) {
   const { app } = createApp(pool);
@@ -58,12 +59,19 @@ describe("DELETE /api/restaurants/:id", () => {
   before(async () => {
     pool = await createTestDb();
     await clearRestaurants(pool);
+    process.env.CRON_SECRET = cronSecret;
     agent = makeAgent(pool);
+  });
+
+  after(() => {
+    delete process.env.CRON_SECRET;
   });
 
   it("returns { ok: true } and removes the row", async () => {
     const r = await addRestaurant(restaurant, pool);
-    const res = await agent.delete(`/api/restaurants/${r.id}`);
+    const res = await agent
+      .delete(`/api/restaurants/${r.id}`)
+      .set("x-cron-secret", cronSecret);
     assert.equal(res.status, 200);
     assert.deepEqual(res.body, { ok: true });
 
@@ -72,8 +80,15 @@ describe("DELETE /api/restaurants/:id", () => {
   });
 
   it("returns 200 even for a non-existent id (idempotent DELETE)", async () => {
-    const res = await agent.delete("/api/restaurants/999999");
+    const res = await agent
+      .delete("/api/restaurants/999999")
+      .set("x-cron-secret", cronSecret);
     assert.equal(res.status, 200);
+  });
+
+  it("rejects requests without cron secret", async () => {
+    const res = await agent.delete("/api/restaurants/999999");
+    assert.equal(res.status, 401);
   });
 });
 
@@ -85,13 +100,18 @@ describe("GET /api/restaurants/needing-menu-check", () => {
 
   before(async () => {
     pool = await createTestDb();
+    process.env.CRON_SECRET = cronSecret;
     agent = makeAgent(pool);
+  });
+
+  after(() => {
+    delete process.env.CRON_SECRET;
   });
 
   it("returns restaurants without 'upcoming' that have no menu_checked_at", async () => {
     const res = await agent
       .get("/api/restaurants/needing-menu-check")
-      .set("x-cron-secret", "test-secret");
+      .set("x-cron-secret", cronSecret);
     assert.equal(res.status, 200);
     assert.ok(Array.isArray(res.body));
     const names = res.body.map((r: { name: string }) => r.name);
@@ -106,13 +126,8 @@ describe("GET /api/restaurants/needing-menu-check", () => {
   });
 
   it("rejects requests without cron secret", async () => {
-    process.env.CRON_SECRET = "test-secret";
-    try {
-      const res = await agent.get("/api/restaurants/needing-menu-check");
-      assert.equal(res.status, 401);
-    } finally {
-      delete process.env.CRON_SECRET;
-    }
+    const res = await agent.get("/api/restaurants/needing-menu-check");
+    assert.equal(res.status, 401);
   });
 });
 
@@ -125,9 +140,14 @@ describe("PUT /api/restaurants/:id/menu", () => {
 
   before(async () => {
     pool = await createTestDb();
+    process.env.CRON_SECRET = cronSecret;
     agent = makeAgent(pool);
     const { rows } = await pool.query("SELECT id FROM restaurants LIMIT 1");
     restaurantId = rows[0].id;
+  });
+
+  after(() => {
+    delete process.env.CRON_SECRET;
   });
 
   it("updates menu_url and dietary_flags", async () => {
@@ -138,7 +158,7 @@ describe("PUT /api/restaurants/:id/menu", () => {
     };
     const res = await agent
       .put(`/api/restaurants/${restaurantId}/menu`)
-      .set("x-cron-secret", "test-secret")
+      .set("x-cron-secret", cronSecret)
       .send({ menuUrl: "https://example.com/menu", dietaryFlags: flags });
     assert.equal(res.status, 200);
     assert.deepEqual(res.body, { ok: true });
@@ -164,14 +184,9 @@ describe("PUT /api/restaurants/:id/menu", () => {
   });
 
   it("rejects requests without cron secret", async () => {
-    process.env.CRON_SECRET = "test-secret";
-    try {
-      const res = await agent
-        .put(`/api/restaurants/${restaurantId}/menu`)
-        .send({ menuUrl: null, dietaryFlags: null });
-      assert.equal(res.status, 401);
-    } finally {
-      delete process.env.CRON_SECRET;
-    }
+    const res = await agent
+      .put(`/api/restaurants/${restaurantId}/menu`)
+      .send({ menuUrl: null, dietaryFlags: null });
+    assert.equal(res.status, 401);
   });
 });

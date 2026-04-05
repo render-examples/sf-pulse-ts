@@ -5,6 +5,10 @@ import { pool } from "./db.js";
 const { app, httpServer } = createApp();
 
 (async () => {
+  if (process.env.NODE_ENV === "production" && !process.env.CRON_SECRET) {
+    throw new Error("CRON_SECRET must be configured in production");
+  }
+
   if (process.env.NODE_ENV === "production") {
     serveStatic(app, pool);
   } else {

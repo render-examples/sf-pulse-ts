@@ -1,4 +1,4 @@
-import { describe, it, before } from "node:test";
+import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import type { Pool as PgPool } from "pg";
 import { createApp } from "../app.js";
@@ -13,6 +13,7 @@ const restaurant = {
   opened_date: "April 2026",
   source_url: null,
 };
+const cronSecret = "test-secret";
 
 function makeAgent(pool: PgPool) {
   const { app } = createApp(pool);
@@ -27,9 +28,17 @@ describe("GET /api/updates and /api/updates/last-updated", () => {
 
   before(async () => {
     pool = await createTestDb();
+    process.env.CRON_SECRET = cronSecret;
     agent = makeAgent(pool);
     // Seed one update via the cron endpoint
-    await agent.post("/api/cron/refresh").send({ restaurants: [restaurant] });
+    await agent
+      .post("/api/cron/refresh")
+      .set("x-cron-secret", cronSecret)
+      .send({ restaurants: [restaurant] });
+  });
+
+  after(() => {
+    delete process.env.CRON_SECRET;
   });
 
   it("/api/updates returns an array of update records", async () => {

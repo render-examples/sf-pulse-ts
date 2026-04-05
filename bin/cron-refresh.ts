@@ -222,7 +222,8 @@ function addRestaurantCandidate(
   const normalized = normalizeRestaurantName(name);
   if (normalized.length < 3) return;
   if (existing.includes(normalized.toLowerCase())) return;
-  if (results.find((r) => r.name.toLowerCase() === normalized.toLowerCase())) return;
+  if (results.find((r) => r.name.toLowerCase() === normalized.toLowerCase()))
+    return;
 
   results.push({
     name: normalized,
@@ -510,7 +511,10 @@ function stripParsingNoiseHtml(html: string): string {
     );
 }
 
-function isLikelyMuseumEventTitle(title: string, ignoredTitleRe: RegExp): boolean {
+function isLikelyMuseumEventTitle(
+  title: string,
+  ignoredTitleRe: RegExp,
+): boolean {
   const normalized = normalizeWhitespace(title);
   if (!normalized) return false;
   if (normalized.length < 4 || normalized.length > 120) return false;
@@ -522,7 +526,10 @@ function isLikelyMuseumEventTitle(title: string, ignoredTitleRe: RegExp): boolea
   return true;
 }
 
-function extractNearbyExactDate(windowText: string, title: string): string | null {
+function extractNearbyExactDate(
+  windowText: string,
+  title: string,
+): string | null {
   const normalizedWindow = normalizeWhitespace(windowText);
   const normalizedTitle = normalizeWhitespace(title);
   const titleIndex = normalizedWindow.indexOf(normalizedTitle);
@@ -534,7 +541,9 @@ function extractNearbyExactDate(windowText: string, title: string): string | nul
   while ((match = datePattern.exec(normalizedWindow)) !== null) {
     const distance = Math.min(
       Math.abs(match.index - titleIndex),
-      Math.abs(match.index + match[0].length - (titleIndex + normalizedTitle.length)),
+      Math.abs(
+        match.index + match[0].length - (titleIndex + normalizedTitle.length),
+      ),
     );
     if (distance > 240) continue;
     const date = normalizeWhitespace(match[0]).replace(/\s*([–-])\s*/g, " $1 ");
@@ -588,7 +597,8 @@ function parseMuseumEvents(
 
     const titleKey = heading.title.toLowerCase();
     if (existing.includes(titleKey)) continue;
-    if (results.find((event) => event.title.toLowerCase() === titleKey)) continue;
+    if (results.find((event) => event.title.toLowerCase() === titleKey))
+      continue;
 
     results.push({
       title: heading.title,

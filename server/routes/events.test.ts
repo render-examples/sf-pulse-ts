@@ -1,4 +1,4 @@
-import { describe, it, before } from "node:test";
+import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import type { Pool as PgPool } from "pg";
 import { createApp } from "../app.js";
@@ -14,6 +14,7 @@ const event = {
   description: "Live music",
   source_url: null,
 };
+const cronSecret = "test-secret";
 
 function makeAgent(pool: PgPool) {
   const { app } = createApp(pool);
@@ -56,16 +57,28 @@ describe("DELETE /api/events/:id", () => {
   before(async () => {
     pool = await createTestDb();
     await clearEvents(pool);
+    process.env.CRON_SECRET = cronSecret;
     agent = makeAgent(pool);
+  });
+
+  after(() => {
+    delete process.env.CRON_SECRET;
   });
 
   it("returns { ok: true } and removes the row", async () => {
     const e = await addEvent(event, pool);
-    const res = await agent.delete(`/api/events/${e.id}`);
+    const res = await agent
+      .delete(`/api/events/${e.id}`)
+      .set("x-cron-secret", cronSecret);
     assert.equal(res.status, 200);
     assert.deepEqual(res.body, { ok: true });
 
     const listRes = await agent.get("/api/events");
     assert.ok(!listRes.body.find((x: { id: number }) => x.id === e.id));
+  });
+
+  it("rejects requests without cron secret", async () => {
+    const res = await agent.delete("/api/events/999999");
+    assert.equal(res.status, 401);
   });
 });

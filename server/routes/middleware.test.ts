@@ -24,14 +24,14 @@ describe("requireCronSecret middleware", () => {
     delete process.env.CRON_SECRET;
   });
 
-  it("calls next() when CRON_SECRET is not set", () => {
+  it("returns 503 when CRON_SECRET is not set", () => {
     delete process.env.CRON_SECRET;
     let called = false;
     const next: NextFunction = () => { called = true; };
     const res = makeRes();
     requireCronSecret(makeReq(), res as unknown as Response, next);
-    assert.ok(called);
-    assert.equal(res.statusCode, undefined);
+    assert.ok(!called);
+    assert.equal(res.statusCode, 503);
   });
 
   it("calls next() when header matches secret", () => {

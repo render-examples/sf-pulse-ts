@@ -11,7 +11,7 @@ export function restaurantRoutes(pool?: Pool): Router {
     res.json(await storage.getRestaurants(pool));
   });
 
-  router.delete("/:id", async (req, res) => {
+  router.delete("/:id", requireCronSecret, async (req, res) => {
     await storage.deleteRestaurant(Number(req.params.id), pool);
     broadcast("restaurants", { action: "refresh" });
     res.json({ ok: true });

@@ -1,4 +1,4 @@
-import { describe, it, before } from "node:test";
+import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import type { Pool as PgPool } from "pg";
 import { createApp } from "../app.js";
@@ -23,6 +23,7 @@ const event = {
   description: "Live music",
   source_url: null,
 };
+const cronSecret = "test-secret-xyz";
 
 function makeAgent(pool: PgPool) {
   const { app } = createApp(pool);
@@ -39,12 +40,18 @@ describe("POST /api/cron/refresh", () => {
     pool = await createTestDb();
     await clearRestaurants(pool);
     await clearEvents(pool);
+    process.env.CRON_SECRET = cronSecret;
     agent = makeAgent(pool);
+  });
+
+  after(() => {
+    delete process.env.CRON_SECRET;
   });
 
   it("inserts restaurants and events, returns added names", async () => {
     const res = await agent
       .post("/api/cron/refresh")
+      .set("x-cron-secret", cronSecret)
       .send({ restaurants: [restaurant], events: [event] });
 
     assert.equal(res.status, 200);
@@ -69,31 +76,24 @@ describe("POST /api/cron/refresh", () => {
   });
 
   it("returns empty added arrays when body is empty", async () => {
-    const res = await agent.post("/api/cron/refresh").send({});
+    const res = await agent
+      .post("/api/cron/refresh")
+      .set("x-cron-secret", cronSecret)
+      .send({});
     assert.equal(res.status, 200);
     assert.deepEqual(res.body.added, { restaurants: [], events: [] });
   });
 
   it("returns 401 when CRON_SECRET is set and header is missing", async () => {
-    process.env.CRON_SECRET = "test-secret-xyz";
-    try {
-      const res = await agent.post("/api/cron/refresh").send({});
-      assert.equal(res.status, 401);
-    } finally {
-      delete process.env.CRON_SECRET;
-    }
+    const res = await agent.post("/api/cron/refresh").send({});
+    assert.equal(res.status, 401);
   });
 
   it("accepts request when CRON_SECRET header matches", async () => {
-    process.env.CRON_SECRET = "test-secret-xyz";
-    try {
-      const res = await agent
-        .post("/api/cron/refresh")
-        .set("x-cron-secret", "test-secret-xyz")
-        .send({});
-      assert.equal(res.status, 200);
-    } finally {
-      delete process.env.CRON_SECRET;
-    }
+    const res = await agent
+      .post("/api/cron/refresh")
+      .set("x-cron-secret", cronSecret)
+      .send({});
+    assert.equal(res.status, 200);
   });
 });
