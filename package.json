@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "type": "module",
   "license": "MIT",
+  "prettier": {
+    "semi": false,
+    "trailingComma": "all",
+    "singleQuote": true
+  },
   "scripts": {
     "postinstall": "node --input-type=commonjs -e \"if (process.env.NODE_ENV !== 'production') require('child_process').execSync('patch-package', {stdio: 'inherit'})\"",
     "dev": "NODE_ENV=development tsx watch --include server --include vite.config.ts --include .env.local --env-file-if-exists=.env.local server/index.ts",
