@@ -5,7 +5,7 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { newDb } from "pg-mem";
+import { DataType, newDb } from "pg-mem";
 import path from "path";
 import { fileURLToPath } from "url";
 import type { Pool as PgPool } from "pg";
@@ -15,7 +15,18 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 function freshPool(): PgPool {
-  const { Pool } = newDb().adapters.createPg();
+  const db = newDb();
+  db.public.registerFunction({
+    name: "replace",
+    args: [DataType.text, DataType.text, DataType.text],
+    returns: DataType.text,
+    implementation: (
+      value: string,
+      search: string,
+      replacement: string,
+    ) => value.split(search).join(replacement),
+  });
+  const { Pool } = db.adapters.createPg();
   return new Pool() as unknown as PgPool;
 }
 
@@ -48,7 +59,11 @@ describe("migrate()", () => {
     const { rows } = await pool.query<{ version: string }>(
       "SELECT version FROM schema_migrations ORDER BY version"
     );
-    assert.deepEqual(rows.map((r) => r.version), ["0001_initial", "0002_menu_dietary"]);
+    assert.deepEqual(rows.map((r) => r.version), [
+      "0001_initial",
+      "0002_menu_dietary",
+      "0003_escape_event_titles",
+    ]);
   });
 
   it("is idempotent — running twice skips already-applied migrations", async () => {
@@ -57,7 +72,20 @@ describe("migrate()", () => {
     await migrate(pool, MIGRATIONS_DIR);
 
     const { rows } = await pool.query("SELECT COUNT(*)::int AS n FROM schema_migrations");
-    assert.equal((rows[0] as { n: number }).n, 2);
+    assert.equal((rows[0] as { n: number }).n, 3);
+  });
+
+  it("escapes seeded event titles that contain HTML-sensitive characters", async () => {
+    const pool = freshPool();
+    await migrate(pool, MIGRATIONS_DIR);
+
+    const { rows } = await pool.query<{ title: string }>(
+      "SELECT title FROM events WHERE title LIKE 'Easter in the Park%'"
+    );
+    assert.equal(
+      rows[0]?.title,
+      "Easter in the Park &amp; Hunky Jesus Contest"
+    );
   });
 
   it("rolls back on a failing migration and re-throws", async () => {

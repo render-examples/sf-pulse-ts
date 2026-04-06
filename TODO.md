@@ -1,4 +1,5 @@
+- [x] html escape event titles
 - [ ] break the cron script into many files
 - [ ] cron shouldn't need to hit the API, just call the code directly
-- [ ] html escape event titles
 - [ ] make sure events are always sorted by date. When ingesting events assume they are this year, or next year if the event is listed in a month that has already happened this year and no other year is specified.
+- [ ] search for Michelin star releases in san francisco every 3 days. when this list is introduced add the resturants to the table, but in the opened column list the count of stars and the date they received them. use a svg of the Michelin star.

@@ -199,6 +199,11 @@ describe("extractEvents()", () => {
     const results = extractEvents("Sunday April 6, 2026", []);
     assert.deepEqual(results, []);
   });
+
+  it("html-escapes extracted titles", () => {
+    const results = extractEvents(`Artist's Night & Day on April 15, 2026.`, []);
+    assert.equal(results[0]?.title, "Artist&#39;s Night &amp; Day");
+  });
 });
 
 // ── extractUrls ────────────────────────────────────────────────────────────────
@@ -554,6 +559,19 @@ describe("parseFAMSFPage()", () => {
     const events = parseFAMSFPage(sampleHtml, ["monet and venice exhibition"]);
     const titles = events.map((e) => e.title);
     assert.ok(!titles.includes("Monet and Venice Exhibition"), "should skip already-known event");
+  });
+
+  it("html-escapes museum event titles", () => {
+    const html = `
+      <html><body>
+        <article>
+          <h3 class="event-title">Artist's "Salon" &amp; Talk</h3>
+          <span class="date">April 22, 2026</span>
+        </article>
+      </body></html>
+    `;
+    const events = parseFAMSFPage(html, []);
+    assert.equal(events[0]?.title, "Artist&#39;s &quot;Salon&quot; &amp; Talk");
   });
 
   it("returns empty array for empty HTML", () => {

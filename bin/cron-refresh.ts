@@ -47,6 +47,18 @@ export function stripHtml(html: string): string {
     .slice(0, 8000);
 }
 
+export function escapeHtml(value: string): string {
+  return value
+    .replace(
+      /&(?!(?:[a-zA-Z][a-zA-Z0-9]+|#\d+|#x[a-fA-F0-9]+);)/g,
+      "&amp;",
+    )
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 // ── RSS / Atom parser ─────────────────────────────────────────────────────────
 
 export interface RssItem {
@@ -243,7 +255,7 @@ export function extractEvents(text: string, existing: string[]): NewEvent[] {
   );
   let m;
   while ((m = pattern.exec(text)) !== null) {
-    const title = normalizeExtractedEventTitle(m[1]);
+    const title = escapeHtml(normalizeExtractedEventTitle(m[1]));
     const date = m[2].trim();
     if (!isLikelyFallbackEventTitle(title)) continue;
     if (
@@ -555,7 +567,7 @@ export async function fetchFuncheap(existing: string[]): Promise<NewEvent[]> {
     }
 
     // Strip trailing " - FREE" suffix.
-    title = title.replace(/\s*-\s*FREE\s*$/i, "").trim();
+    title = escapeHtml(title.replace(/\s*-\s*FREE\s*$/i, "").trim());
 
     if (
       title.length >= 3 &&
@@ -704,13 +716,14 @@ function parseMuseumEvents(
     const date = extractNearbyExactDate(windowText, heading.title);
     if (!date) continue;
 
-    const titleKey = heading.title.toLowerCase();
+    const escapedTitle = escapeHtml(heading.title);
+    const titleKey = escapedTitle.toLowerCase();
     if (existing.includes(titleKey)) continue;
     if (results.find((event) => event.title.toLowerCase() === titleKey))
       continue;
 
     results.push({
-      title: heading.title,
+      title: escapedTitle,
       location: options.location,
       date,
       time: null,
