@@ -19,7 +19,6 @@ import {
   parseEaterArticle,
   fetchEaterSF,
   fetchFuncheap,
-  resolveAppUrl,
 } from "./cron-refresh.js";
 import type { RssItem } from "./cron-refresh.js";
 
@@ -32,30 +31,6 @@ function readFixture(name: string): string {
 
 const eaterOpeningsHtml = readFixture("eater-openings-april-2026.html");
 const ddgEventsAnomalyHtml = readFixture("ddg-events-anomaly-page.html");
-
-// ── stripHtml ─────────────────────────────────────────────────────────────────
-
-describe("resolveAppUrl()", () => {
-  it("defaults to localhost when APP_URL is unset", () => {
-    assert.equal(resolveAppUrl(undefined, undefined), "http://localhost:5000");
-  });
-
-  it("uses PORT for localhost fallback when set", () => {
-    assert.equal(resolveAppUrl(undefined, "4321"), "http://localhost:4321");
-  });
-
-  it("keeps explicit https URLs unchanged", () => {
-    assert.equal(resolveAppUrl("https://sf-pulse.example.com/"), "https://sf-pulse.example.com");
-  });
-
-  it("treats host:port values as internal http addresses", () => {
-    assert.equal(resolveAppUrl("sf-pulse:10000"), "http://sf-pulse:10000");
-  });
-
-  it("treats bare hostnames as public https addresses", () => {
-    assert.equal(resolveAppUrl("sf-pulse.example.com"), "https://sf-pulse.example.com");
-  });
-});
 
 describe("stripHtml()", () => {
   it("removes HTML tags", () => {

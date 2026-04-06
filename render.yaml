@@ -39,13 +39,3 @@ services:
         fromDatabase:
           name: sf-pulse-db
           property: connectionString
-      - key: CRON_SECRET
-        fromService:
-          name: sf-pulse
-          type: web
-          envVarKey: CRON_SECRET
-      - key: APP_URL
-        fromService:
-          name: sf-pulse
-          type: web
-          property: hostport

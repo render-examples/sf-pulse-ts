@@ -2,31 +2,25 @@
  * Render Cron Job — runs daily at 7am PDT.
  *
  * Searches multiple sources for new SF restaurant openings and events,
- * then POSTs newly-found items to the app's /api/cron/refresh endpoint.
- * Existing restaurants and events are read from the app's database-backed API
- * so each run only reports items not already stored.
+ * then writes newly-found items directly to the database-backed app code.
+ * Existing restaurants and events are read directly from storage so each run
+ * only reports items not already stored.
  *
  * Sources:
  *   Restaurants: Eater SF (Atom), SFist (RSS 2.0), DuckDuckGo fallback
  *   Events:      Funcheap (RSS 2.0), FAMSF calendar page, Cal Academy events page,
  *                DuckDuckGo fallback
  */
-import type { DietaryFlags, DietaryFlag } from "../server/storage.js";
-
-export function resolveAppUrl(
-  raw = process.env.APP_URL,
-  port = process.env.PORT,
-): string {
-  if (!raw) return `http://localhost:${port ?? "5000"}`;
-
-  const normalized = raw.trim().replace(/\/+$/, "");
-  if (/^https?:\/\//i.test(normalized)) return normalized;
-  if (/^[^/]+:\d+$/.test(normalized)) return `http://${normalized}`;
-  return `https://${normalized}`;
-}
-
-const APP_URL = resolveAppUrl();
-const CRON_SECRET = process.env.CRON_SECRET ?? "";
+import { getPool } from "../server/db.js";
+import { applyDiscoveredItems } from "../server/refresh.js";
+import {
+  getEvents,
+  getRestaurants,
+  getRestaurantsNeedingMenuCheck,
+  updateRestaurantMenu,
+  type DietaryFlags,
+  type DietaryFlag,
+} from "../server/storage.js";
 
 export async function searchWeb(q: string): Promise<string> {
   const res = await fetch(
@@ -971,12 +965,10 @@ async function currentLists(): Promise<{
   restaurantNames: string[];
   eventTitles: string[];
 }> {
-  const [rRes, eRes] = await Promise.all([
-    fetch(`${APP_URL}/api/restaurants`),
-    fetch(`${APP_URL}/api/events`),
+  const [restaurants, events] = await Promise.all([
+    getRestaurants(),
+    getEvents(),
   ]);
-  const restaurants: { name: string }[] = await rRes.json();
-  const events: { title: string }[] = await eRes.json();
   return {
     restaurantNames: restaurants.map((r) => r.name.toLowerCase()),
     eventTitles: events.map((e) => e.title.toLowerCase()),
@@ -1062,15 +1054,11 @@ async function main() {
   );
 
   if (newRestaurants.length > 0 || newEvents.length > 0) {
-    const res = await fetch(`${APP_URL}/api/cron/refresh`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-cron-secret": CRON_SECRET,
-      },
-      body: JSON.stringify({ restaurants: newRestaurants, events: newEvents }),
+    const result = await applyDiscoveredItems({
+      restaurants: newRestaurants,
+      events: newEvents,
     });
-    console.log("[cron] refresh response:", await res.json());
+    console.log("[cron] refresh result:", result);
   } else {
     console.log("[cron] nothing new");
   }
@@ -1078,33 +1066,25 @@ async function main() {
   // ── Phase 2: Menu discovery ─────────────────────────────────────────────────
   console.log("[cron] starting menu discovery...");
   try {
-    const menuRes = await fetch(
-      `${APP_URL}/api/restaurants/needing-menu-check`,
-      {
-        headers: { "x-cron-secret": CRON_SECRET },
-      },
-    );
-    if (menuRes.ok) {
-      const toCheck: { id: number; name: string }[] = await menuRes.json();
-      console.log(`[cron] ${toCheck.length} restaurants need menu check`);
+    const toCheck = await getRestaurantsNeedingMenuCheck();
+    console.log(`[cron] ${toCheck.length} restaurants need menu check`);
 
-      // Process sequentially to avoid hammering search engines
-      for (const r of toCheck) {
-        try {
-          console.log(`[cron] checking menu for: ${r.name}`);
-          const { menuUrl, dietaryFlags } = await discoverMenu(r.name);
-          await fetch(`${APP_URL}/api/restaurants/${r.id}/menu`, {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-              "x-cron-secret": CRON_SECRET,
-            },
-            body: JSON.stringify({ menuUrl, dietaryFlags }),
-          });
-          console.info(`[cron] found menu for ${r.name}`);
-        } catch (err) {
-          console.error(`[cron] menu check failed for ${r.name}:`, err);
-        }
+    // Process sequentially to avoid hammering search engines
+    for (const restaurant of toCheck) {
+      try {
+        console.log(`[cron] checking menu for: ${restaurant.name}`);
+        const { menuUrl, dietaryFlags } = await discoverMenu(restaurant.name);
+        await updateRestaurantMenu(
+          restaurant.id,
+          menuUrl,
+          dietaryFlags,
+        );
+        console.info(`[cron] found menu for ${restaurant.name}`);
+      } catch (err) {
+        console.error(
+          `[cron] menu check failed for ${restaurant.name}:`,
+          err,
+        );
       }
     }
   } catch (err) {
@@ -1119,6 +1099,12 @@ const isMain =
 if (isMain) {
   main().catch((err) => {
     console.error(err);
-    process.exit(1);
+    process.exitCode = 1;
+  }).finally(async () => {
+    try {
+      await getPool().end();
+    } catch {
+      // Ignore pool shutdown failures so process exit code reflects the main task.
+    }
   });
 }

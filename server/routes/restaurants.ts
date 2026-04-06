@@ -17,21 +17,5 @@ export function restaurantRoutes(pool?: Pool): Router {
     res.json({ ok: true });
   });
 
-  // ── Menu discovery (called by cron job) ─────────────────────────────────
-  router.get("/needing-menu-check", requireCronSecret, async (_req, res) => {
-    const restaurants = await storage.getRestaurantsNeedingMenuCheck(pool);
-    res.json(restaurants.map((r) => ({ id: r.id, name: r.name })));
-  });
-
-  router.put("/:id/menu", requireCronSecret, async (req, res) => {
-    const { menuUrl, dietaryFlags } = req.body as {
-      menuUrl: string | null;
-      dietaryFlags: storage.DietaryFlags | null;
-    };
-    await storage.updateRestaurantMenu(Number(req.params.id), menuUrl, dietaryFlags, pool);
-    broadcast("restaurants", { action: "refresh" });
-    res.json({ ok: true });
-  });
-
   return router;
 }
