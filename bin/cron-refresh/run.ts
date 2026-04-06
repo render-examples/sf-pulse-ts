@@ -8,6 +8,7 @@ import {
   updateRestaurantMenu,
 } from "../../server/storage.js";
 import { normalizeDateText } from "../../shared/dates.ts";
+import { buildEventIdentityKey } from "../../shared/event-identity.ts";
 import { stripHtml } from "./html.js";
 import { searchWeb } from "./http.js";
 import { discoverMenu } from "./menu.js";
@@ -40,7 +41,7 @@ function settled<T>(
 
 async function currentLists(): Promise<{
   restaurantNames: string[];
-  eventTitles: string[];
+  eventKeys: string[];
 }> {
   const [restaurants, events] = await Promise.all([
     getRestaurants(),
@@ -49,7 +50,7 @@ async function currentLists(): Promise<{
 
   return {
     restaurantNames: restaurants.map((restaurant) => restaurant.name.toLowerCase()),
-    eventTitles: events.map((event) => event.title.toLowerCase()),
+    eventKeys: events.map((event) => event.dedupe_key),
   };
 }
 
@@ -119,9 +120,9 @@ export async function main(): Promise<void> {
   console.info("[cron] fetching event sources...");
   const [funcheapResult, famsfResult, calAcademyResult, ddgEventsResult] =
     await Promise.allSettled([
-      fetchFuncheap(lists.eventTitles),
-      fetchFAMSF(lists.eventTitles),
-      fetchCalAcademy(lists.eventTitles),
+      fetchFuncheap(lists.eventKeys),
+      fetchFAMSF(lists.eventKeys),
+      fetchCalAcademy(lists.eventKeys),
       searchWeb(`San Francisco events Golden Gate Park concerts ${monthYear}`),
     ]);
 
@@ -134,10 +135,10 @@ export async function main(): Promise<void> {
   );
   const ddgEvents = extractEvents(
     stripHtml(settled(ddgEventsResult, "DuckDuckGo (events)", "")),
-    lists.eventTitles,
+    lists.eventKeys,
   );
 
-  const seenTitles = new Set<string>(lists.eventTitles);
+  const seenKeys = new Set<string>(lists.eventKeys);
   const newEvents: NewEvent[] = [];
   for (const event of [
     ...funcheapItems,
@@ -145,12 +146,17 @@ export async function main(): Promise<void> {
     ...calAcademyItems,
     ...ddgEvents,
   ]) {
-    const key = event.title.toLowerCase();
-    if (seenTitles.has(key)) continue;
-    seenTitles.add(key);
+    const normalizedDate = normalizeDateText(event.date);
+    const key = buildEventIdentityKey({
+      title: event.title,
+      location: event.location,
+      dateText: normalizedDate,
+    });
+    if (seenKeys.has(key)) continue;
+    seenKeys.add(key);
     newEvents.push({
       ...event,
-      date: normalizeDateText(event.date),
+      date: normalizedDate,
     });
   }
 

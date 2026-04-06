@@ -5,13 +5,35 @@ import { createApp } from "../app.js";
 import { makeRequestAgent, type RequestAgent } from "../test-agent.js";
 import { createTestDb } from "../test-helpers.js";
 import { clearRestaurants, addRestaurant } from "../storage.js";
+import { formatMonthYear, todayUTC } from "../../shared/dates.ts";
+
+function shiftUtcMonths(reference: Date, months: number): Date {
+  return new Date(
+    Date.UTC(
+      reference.getUTCFullYear(),
+      reference.getUTCMonth() + months,
+      reference.getUTCDate(),
+    ),
+  );
+}
+
+function formatDay(value: Date): string {
+  return value.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+const reference = todayUTC();
 
 const restaurant = {
   name: "Route Test Bistro",
   neighborhood: "Mission",
   cuisine: "French",
   address: "1 Test St",
-  opened_date: "April 2026",
+  opened_date: formatMonthYear(reference),
   source_url: null,
 };
 const cronSecret = "test-secret";
@@ -47,6 +69,20 @@ describe("GET /api/restaurants", () => {
     assert.equal(r.neighborhood, restaurant.neighborhood);
     assert.ok(typeof r.id === "number");
     assert.ok(r.added_at);
+  });
+
+  it("filters out stale non-Michelin restaurants", async () => {
+    await addRestaurant(
+      {
+        ...restaurant,
+        name: "Old News",
+        opened_date: formatDay(shiftUtcMonths(reference, -4)),
+      },
+      pool,
+    );
+
+    const res = await agent.get("/api/restaurants");
+    assert.ok(!res.body.some((row: { name: string }) => row.name === "Old News"));
   });
 });
 

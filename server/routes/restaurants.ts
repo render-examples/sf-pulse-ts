@@ -8,7 +8,7 @@ export function restaurantRoutes(pool?: Pool): Router {
   const router = Router();
 
   router.get("/", async (_req, res) => {
-    res.json(await storage.getRestaurants(pool));
+    res.json(await storage.getVisibleRestaurants(pool));
   });
 
   router.delete("/:id", requireCronSecret, async (req, res) => {

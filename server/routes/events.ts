@@ -8,7 +8,7 @@ export function eventRoutes(pool?: Pool): Router {
   const router = Router();
 
   router.get("/", async (_req, res) => {
-    res.json(await storage.getEvents(pool));
+    res.json(await storage.getVisibleEvents(pool));
   });
 
   router.delete("/:id", requireCronSecret, async (req, res) => {

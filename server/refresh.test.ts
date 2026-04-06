@@ -95,6 +95,27 @@ describe("applyDiscoveredItems()", () => {
     assert.ok(updates.some((u) => u.item_name === event.title));
   });
 
+  it("allows same-titled events on different dates", async () => {
+    await clearEvents(pool);
+
+    await applyDiscoveredItems(
+      {
+        events: [
+          event,
+          { ...event, date: "April 11, 2026" },
+        ],
+      },
+      pool,
+    );
+
+    const events = await getEvents(pool);
+    assert.equal(events.length, 2);
+    assert.deepEqual(
+      events.map((entry) => entry.date),
+      ["April 10, 2026", "April 11, 2026"],
+    );
+  });
+
   it("returns empty added arrays when input is empty", async () => {
     const result = await applyDiscoveredItems({}, pool);
 

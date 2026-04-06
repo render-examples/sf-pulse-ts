@@ -33,6 +33,21 @@ type DateRange = {
   end: Date;
 };
 
+export type DatePrecision =
+  | "day"
+  | "day_range"
+  | "month"
+  | "season"
+  | "year"
+  | "unknown";
+
+export interface StructuredDate {
+  startDate: string | null;
+  endDate: string | null;
+  datePrecision: DatePrecision;
+  isUpcoming: boolean;
+}
+
 export function todayUTC(): Date {
   const now = new Date();
   return new Date(
@@ -65,6 +80,10 @@ function normalizeRawDate(value: string): string {
     .replace(/\s*([–-])\s*/g, "$1")
     .replace(/\s+,/g, ",")
     .trim();
+}
+
+function formatIsoDateUTC(date: Date): string {
+  return date.toISOString().slice(0, 10);
 }
 
 function findMonth(raw: string): number | null {
@@ -114,6 +133,35 @@ export function normalizeDateText(
   }
 
   return normalized;
+}
+
+export function getDatePrecision(raw: string): DatePrecision {
+  const normalized = normalizeRawDate(raw);
+  if (!normalized) return "unknown";
+
+  if (new RegExp(`\\b(${SEASON_PATTERN})\\b`, "i").test(normalized)) {
+    return "season";
+  }
+
+  const dayRangeMatch = normalized.match(
+    new RegExp(
+      `(?:${MONTH_PATTERN})\\s+\\d{1,2}(?!\\d)(?:[–-](\\d{1,2})(?!\\d))?`,
+      "i",
+    ),
+  );
+  if (dayRangeMatch) {
+    return dayRangeMatch[1] ? "day_range" : "day";
+  }
+
+  if (findMonth(normalized) !== null) {
+    return "month";
+  }
+
+  if (hasExplicitYear(normalized)) {
+    return "year";
+  }
+
+  return "unknown";
 }
 
 function parseDateRange(
@@ -182,6 +230,20 @@ function parseDateRange(
 
 export function parseDate(raw: string, reference = todayUTC()): Date | null {
   return parseDateRange(raw, reference)?.start ?? null;
+}
+
+export function deriveStructuredDate(
+  raw: string,
+  reference = todayUTC(),
+): StructuredDate {
+  const range = parseDateRange(raw, reference);
+
+  return {
+    startDate: range ? formatIsoDateUTC(range.start) : null,
+    endDate: range ? formatIsoDateUTC(range.end) : null,
+    datePrecision: getDatePrecision(raw),
+    isUpcoming: isTodayOrPotentialFuture(raw, reference),
+  };
 }
 
 export function isUpcoming(raw: string): boolean {

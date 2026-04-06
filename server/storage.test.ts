@@ -10,13 +10,16 @@ import type { Pool as PgPool } from "pg";
 import { createTestDb } from "./test-helpers.js";
 import {
   getRestaurants,
+  getVisibleRestaurants,
   addRestaurant,
   getRestaurantByName,
   updateRestaurant,
   deleteRestaurant,
   clearRestaurants,
   getEvents,
+  getVisibleEvents,
   addEvent,
+  getEventByDedupeKey,
   deleteEvent,
   clearEvents,
   getSubscriptions,
@@ -30,11 +33,53 @@ import {
   updateRestaurantMenu,
 } from "./storage.js";
 import type { DietaryFlags } from "./storage.js";
+import { formatMonthYear, todayUTC } from "../shared/dates.ts";
+
+function formatDay(value: Date): string {
+  return value.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function shiftUtcDays(reference: Date, days: number): Date {
+  return new Date(
+    Date.UTC(
+      reference.getUTCFullYear(),
+      reference.getUTCMonth(),
+      reference.getUTCDate() + days,
+    ),
+  );
+}
+
+function shiftUtcMonths(reference: Date, months: number): Date {
+  return new Date(
+    Date.UTC(
+      reference.getUTCFullYear(),
+      reference.getUTCMonth() + months,
+      reference.getUTCDate(),
+    ),
+  );
+}
 
 // ── Restaurants ───────────────────────────────────────────────────────────────
 
 describe("storage — restaurants", () => {
   let pool: PgPool;
+  const reference = todayUTC();
+  const sampleMonth = formatMonthYear(reference);
+  const sampleStartDate = new Date(
+    Date.UTC(reference.getUTCFullYear(), reference.getUTCMonth(), 1),
+  )
+    .toISOString()
+    .slice(0, 10);
+  const sampleEndDate = new Date(
+    Date.UTC(reference.getUTCFullYear(), reference.getUTCMonth() + 1, 0),
+  )
+    .toISOString()
+    .slice(0, 10);
 
   before(async () => {
     pool = await createTestDb();
@@ -47,7 +92,7 @@ describe("storage — restaurants", () => {
     neighborhood: "Mission",
     cuisine: "French",
     address: "1 Mission St",
-    opened_date: "April 2026",
+    opened_date: sampleMonth,
     source_url: "https://example.com",
   };
 
@@ -56,6 +101,10 @@ describe("storage — restaurants", () => {
     assert.equal(r.name, sample.name);
     assert.equal(r.neighborhood, sample.neighborhood);
     assert.equal(r.highlight_kind, "opening");
+    assert.equal(r.opened_start_date, sampleStartDate);
+    assert.equal(r.opened_end_date, sampleEndDate);
+    assert.equal(r.opened_date_precision, "month");
+    assert.equal(r.is_upcoming, true);
     assert.ok(typeof r.id === "number");
     assert.ok(r.added_at);
   });
@@ -116,6 +165,48 @@ describe("storage — restaurants", () => {
 
     assert.equal(updated.highlight_kind, "michelin");
     assert.equal(updated.opened_date, "1 star · August 6, 2024");
+    assert.equal(updated.opened_start_date, "2024-08-06");
+    assert.equal(updated.opened_end_date, "2024-08-06");
+  });
+
+  it("getVisibleRestaurants keeps recent openings, upcoming spots, and Michelin rows", async () => {
+    await clearRestaurants(pool);
+    await addRestaurant(
+      {
+        ...sample,
+        name: "Recent",
+        opened_date: formatDay(shiftUtcDays(reference, -30)),
+      },
+      pool,
+    );
+    await addRestaurant(
+      { ...sample, name: "Upcoming", opened_date: "Summer 2026 (upcoming)" },
+      pool,
+    );
+    await addRestaurant(
+      {
+        ...sample,
+        name: "Michelin",
+        cuisine: "Michelin 2-star recognition",
+        opened_date: "2 stars · June 27, 2025",
+        highlight_kind: "michelin",
+      },
+      pool,
+    );
+    await addRestaurant(
+      {
+        ...sample,
+        name: "Old",
+        opened_date: formatDay(shiftUtcMonths(reference, -4)),
+      },
+      pool,
+    );
+
+    const rows = await getVisibleRestaurants(pool);
+    assert.deepEqual(
+      rows.map((row) => row.name).sort(),
+      ["Michelin", "Recent", "Upcoming"],
+    );
   });
 });
 
@@ -123,6 +214,9 @@ describe("storage — restaurants", () => {
 
 describe("storage — events", () => {
   let pool: PgPool;
+  const reference = todayUTC();
+  const sampleDate = formatDay(shiftUtcDays(reference, 4));
+  const sampleIsoDate = shiftUtcDays(reference, 4).toISOString().slice(0, 10);
 
   before(async () => {
     pool = await createTestDb();
@@ -132,7 +226,7 @@ describe("storage — events", () => {
   const sample = {
     title: "Test Concert",
     location: "Brick & Mortar",
-    date: "April 10, 2026",
+    date: sampleDate,
     time: "8:00 PM",
     description: "Live music",
     source_url: "https://example.com",
@@ -141,15 +235,22 @@ describe("storage — events", () => {
   it("addEvent returns the inserted row with id and added_at", async () => {
     const e = await addEvent(sample, pool);
     assert.equal(e.title, sample.title);
+    assert.equal(e.start_date, sampleIsoDate);
+    assert.equal(e.end_date, sampleIsoDate);
+    assert.equal(e.date_precision, "day");
+    assert.equal(
+      e.dedupe_key,
+      `test concert|brick & mortar|${sampleDate.toLowerCase()}`,
+    );
     assert.ok(typeof e.id === "number");
     assert.ok(e.added_at);
   });
 
   it("getEvents returns rows sorted by parsed date ascending", async () => {
     await clearEvents(pool);
-    await addEvent({ ...sample, title: "Late", date: "May 9, 2026" }, pool);
-    await addEvent({ ...sample, title: "Soon", date: "April 10, 2026" }, pool);
-    await addEvent({ ...sample, title: "Next Year", date: "March 1, 2027" }, pool);
+    await addEvent({ ...sample, title: "Late", date: formatDay(shiftUtcDays(reference, 33)) }, pool);
+    await addEvent({ ...sample, title: "Soon", date: formatDay(shiftUtcDays(reference, 4)) }, pool);
+    await addEvent({ ...sample, title: "Next Year", date: formatDay(shiftUtcDays(reference, 370)) }, pool);
 
     const rows = await getEvents(pool);
     assert.deepEqual(
@@ -180,6 +281,26 @@ describe("storage — events", () => {
     assert.equal(e.time, null);
     assert.equal(e.description, null);
     assert.equal(e.source_url, null);
+  });
+
+  it("can look up an event by dedupe key", async () => {
+    await clearEvents(pool);
+    const e = await addEvent(sample, pool);
+    const found = await getEventByDedupeKey(e.dedupe_key, pool);
+    assert.equal(found?.id, e.id);
+  });
+
+  it("getVisibleEvents excludes past events but keeps upcoming ones", async () => {
+    await clearEvents(pool);
+    await addEvent({ ...sample, title: "Past", date: formatDay(shiftUtcDays(reference, -10)) }, pool);
+    await addEvent({ ...sample, title: "Today", date: formatDay(reference) }, pool);
+    await addEvent({ ...sample, title: "Future", date: formatDay(shiftUtcDays(reference, 4)) }, pool);
+
+    const rows = await getVisibleEvents(pool);
+    assert.deepEqual(
+      rows.map((row) => row.title),
+      ["Today", "Future"],
+    );
   });
 });
 

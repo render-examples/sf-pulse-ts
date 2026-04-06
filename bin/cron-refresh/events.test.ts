@@ -10,11 +10,21 @@ import {
   stripHtml,
 } from "../cron-refresh.js";
 import { readFixture } from "./test-helpers.js";
+import { normalizeDateText } from "../../shared/dates.ts";
+import { buildEventIdentityKey } from "../../shared/event-identity.ts";
 
 const ddgEventsAnomalyHtml = readFixture("ddg-events-anomaly-page.html");
 const famsfCalendarHtml = readFixture("famsf-calendar-live.html");
 const calAcademyEventsHtml = readFixture("calacademy-events-live.html");
 const funcheapFeedXml = readFixture("funcheap-feed-live.xml");
+
+function eventKey(title: string, location: string, date: string): string {
+  return buildEventIdentityKey({
+    title,
+    location,
+    dateText: normalizeDateText(date),
+  });
+}
 
 describe("extractEvents()", () => {
   it("extracts an event with a month-day date", () => {
@@ -34,7 +44,13 @@ describe("extractEvents()", () => {
     const text = "Mission Street Fair on April 15 draws thousands.";
     const first = extractEvents(text, []);
     assert.ok(first.length >= 1);
-    assert.deepEqual(extractEvents(text, [first[0].title.toLowerCase()]), []);
+    assert.deepEqual(
+      extractEvents(
+        text,
+        [eventKey(first[0].title, first[0].location, first[0].date)],
+      ),
+      [],
+    );
   });
 
   it("deduplicates within a single run", () => {
@@ -114,7 +130,11 @@ describe("parseFAMSFPage()", () => {
 
   it("deduplicates against existing list for saved live HTML", () => {
     const events = parseFAMSFPage(famsfCalendarHtml, [
-      "a closer look: the etruscans",
+      eventKey(
+        "A Closer Look: The Etruscans",
+        "Fine Arts Museums of San Francisco",
+        "May 9",
+      ),
     ]);
     assert.ok(
       !events.some((event) => event.title === "A Closer Look: The Etruscans"),
@@ -227,16 +247,22 @@ describe("fetchFuncheap()", () => {
     try {
       const events = await fetchFuncheap([]);
       assert.ok(events.length >= 4);
-      assert.equal(
-        events[0].title,
-        "Nike Missile Site Open House &#038; Storytelling | Marin Headlands",
+      assert.ok(
+        events.some(
+          (event) =>
+            event.title ===
+              "Nike Missile Site Open House &#038; Storytelling | Marin Headlands" &&
+            event.date === "July 4, 2026",
+        ),
       );
-      assert.equal(events[0].date, "July 4, 2026");
-      assert.equal(
-        events[1].title,
-        "Free &#8220;Legion of Honor&#8221; Museum Day for Bay Area Residents (Every Saturday)",
+      assert.ok(
+        events.some(
+          (event) =>
+            event.title ===
+              "Free &#8220;Legion of Honor&#8221; Museum Day for Bay Area Residents (Every Saturday)" &&
+            event.date === "May 30, 2026",
+        ),
       );
-      assert.equal(events[1].date, "May 30, 2026");
     } finally {
       globalThis.fetch = originalFetch;
     }

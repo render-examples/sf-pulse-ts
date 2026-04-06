@@ -5,11 +5,33 @@ import { createApp } from "../app.js";
 import { makeRequestAgent, type RequestAgent } from "../test-agent.js";
 import { createTestDb } from "../test-helpers.js";
 import { clearEvents, addEvent } from "../storage.js";
+import { todayUTC } from "../../shared/dates.ts";
+
+function formatDay(value: Date): string {
+  return value.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function shiftUtcDays(reference: Date, days: number): Date {
+  return new Date(
+    Date.UTC(
+      reference.getUTCFullYear(),
+      reference.getUTCMonth(),
+      reference.getUTCDate() + days,
+    ),
+  );
+}
+
+const reference = todayUTC();
 
 const event = {
   title: "Route Test Concert",
   location: "Brick & Mortar",
-  date: "April 10, 2026",
+  date: formatDay(shiftUtcDays(reference, 4)),
   time: "8:00 PM",
   description: "Live music",
   source_url: null,
@@ -45,6 +67,16 @@ describe("GET /api/events", () => {
     const e = res.body[0];
     assert.equal(e.title, event.title);
     assert.ok(typeof e.id === "number");
+  });
+
+  it("filters out past events", async () => {
+    await addEvent(
+      { ...event, title: "Already Happened", date: formatDay(shiftUtcDays(reference, -10)) },
+      pool,
+    );
+
+    const res = await agent.get("/api/events");
+    assert.ok(!res.body.some((row: { title: string }) => row.title === "Already Happened"));
   });
 });
 

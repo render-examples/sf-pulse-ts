@@ -16,6 +16,16 @@ export interface Restaurant {
   cuisine: string;
   address: string | null;
   opened_date: string;
+  opened_start_date: string | null;
+  opened_end_date: string | null;
+  opened_date_precision:
+    | "day"
+    | "day_range"
+    | "month"
+    | "season"
+    | "year"
+    | "unknown";
+  is_upcoming: boolean;
   highlight_kind: "opening" | "michelin";
   source_url: string | null;
   menu_url: string | null;
@@ -28,6 +38,17 @@ export interface SFEvent {
   title: string;
   location: string;
   date: string;
+  start_date: string | null;
+  end_date: string | null;
+  date_precision:
+    | "day"
+    | "day_range"
+    | "month"
+    | "season"
+    | "year"
+    | "unknown";
+  is_upcoming: boolean;
+  dedupe_key: string;
   time: string | null;
   description: string | null;
   source_url: string | null;

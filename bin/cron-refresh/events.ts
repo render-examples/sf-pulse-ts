@@ -12,6 +12,8 @@ import {
 import { isRecent } from "./recency.js";
 import { fetchRss } from "./rss.js";
 import type { NewEvent } from "./types.js";
+import { normalizeDateText } from "../../shared/dates.ts";
+import { buildEventIdentityKey } from "../../shared/event-identity.ts";
 
 const EXACT_EVENT_DATE_PATTERN =
   `(?:(${WEEKDAY_PATTERN}),?\\s+)?` +
@@ -44,8 +46,18 @@ function isLikelyFallbackEventTitle(title: string): boolean {
   return true;
 }
 
+function eventIdentityKey(event: Pick<NewEvent, "title" | "location" | "date">): string {
+  const normalizedDate = normalizeDateText(event.date);
+  return buildEventIdentityKey({
+    title: event.title,
+    location: event.location,
+    dateText: normalizedDate,
+  });
+}
+
 export function extractEvents(text: string, existing: string[]): NewEvent[] {
   const results: NewEvent[] = [];
+  const seenKeys = new Set(existing);
   const pattern = new RegExp(
     `([A-Z][A-Za-z &:'’\\-]{4,60}?)\\s+(?:on\\s+|[–-]\\s*)?((?:${MONTH_NAME_PATTERN})\\s+\\d{1,2}(?!\\d)(?:,?\\s+\\d{4})?)`,
     "g",
@@ -56,19 +68,20 @@ export function extractEvents(text: string, existing: string[]): NewEvent[] {
     const title = escapeHtml(normalizeExtractedEventTitle(match[1]));
     const date = match[2].trim();
     if (!isLikelyFallbackEventTitle(title)) continue;
-    if (
-      !existing.includes(title.toLowerCase()) &&
-      !results.find((event) => event.title === title)
-    ) {
-      results.push({
-        title,
-        location: "Mission District, San Francisco",
-        date,
-        time: null,
-        description: null,
-        source_url: null,
-      });
+    const event = {
+      title,
+      location: "Mission District, San Francisco",
+      date,
+      time: null,
+      description: null,
+      source_url: null,
+    };
+    const key = eventIdentityKey(event);
+    if (seenKeys.has(key)) {
+      continue;
     }
+    seenKeys.add(key);
+    results.push(event);
   }
 
   return results.slice(0, 10);
@@ -130,6 +143,7 @@ function parseMuseumEvents(
     headingLevels: string;
   },
 ): NewEvent[] {
+  const seenKeys = new Set(existing);
   const cleanedHtml = stripParsingNoiseHtml(html);
   const headingRe = new RegExp(
     `<h([${options.headingLevels}])[^>]*>([\\s\\S]*?)<\\/h\\1>`,
@@ -164,21 +178,21 @@ function parseMuseumEvents(
     const date = extractNearbyExactDate(windowText, heading.title);
     if (!date) continue;
 
-    const escapedTitle = escapeHtml(heading.title);
-    const titleKey = escapedTitle.toLowerCase();
-    if (existing.includes(titleKey)) continue;
-    if (results.find((event) => event.title.toLowerCase() === titleKey)) {
-      continue;
-    }
-
-    results.push({
-      title: escapedTitle,
+    const event = {
+      title: escapeHtml(heading.title),
       location: options.location,
       date,
       time: null,
       description: null,
       source_url: options.sourceUrl,
-    });
+    };
+    const key = eventIdentityKey(event);
+    if (seenKeys.has(key)) {
+      continue;
+    }
+    seenKeys.add(key);
+
+    results.push(event);
   }
 
   return results;
@@ -187,6 +201,7 @@ function parseMuseumEvents(
 export async function fetchFuncheap(existing: string[]): Promise<NewEvent[]> {
   const items = await fetchRss("https://sf.funcheap.com/feed/");
   const results: NewEvent[] = [];
+  const seenKeys = new Set(existing);
 
   for (const item of items) {
     if (!isRecent(item.pubDate)) continue;
@@ -213,19 +228,21 @@ export async function fetchFuncheap(existing: string[]): Promise<NewEvent[]> {
     }
 
     title = escapeHtml(title.replace(/\s*-\s*FREE\s*$/i, "").trim());
-    if (
-      title.length >= 3 &&
-      !existing.includes(title.toLowerCase()) &&
-      !results.find((event) => event.title === title)
-    ) {
-      results.push({
+    if (title.length >= 3) {
+      const event = {
         title,
         location: "San Francisco",
         date,
         time: null,
         description: item.description || null,
         source_url: item.link || null,
-      });
+      };
+      const key = eventIdentityKey(event);
+      if (seenKeys.has(key)) {
+        continue;
+      }
+      seenKeys.add(key);
+      results.push(event);
     }
   }
 

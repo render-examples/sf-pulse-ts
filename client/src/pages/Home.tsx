@@ -136,6 +136,15 @@ function decodePushKey(value: string): Uint8Array {
   return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 }
 
+async function readErrorMessage(response: Response, fallback: string): Promise<string> {
+  try {
+    const body = await response.json() as { error?: string; message?: string };
+    return body.error ?? body.message ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function OpenedLabel({ restaurant }: { restaurant: Restaurant }) {
   if (restaurant.highlight_kind !== "michelin") {
     return (
@@ -157,62 +166,142 @@ function OpenedLabel({ restaurant }: { restaurant: Restaurant }) {
 function usePush() {
   const [subscribed, setSubscribed] = useState(false);
   const [supported, setSupported] = useState(false);
+  const [available, setAvailable] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [vapidKey, setVapidKey] = useState<string | null>(null);
+  const [unavailableReason, setUnavailableReason] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const ok = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
     setSupported(ok);
-    if (ok) {
-      navigator.serviceWorker.ready.then((reg) =>
-        reg.pushManager.getSubscription().then((sub) => setSubscribed(!!sub))
-      );
+    if (!ok) {
+      setAvailable(false);
+      return;
     }
+
+    let cancelled = false;
+
+    navigator.serviceWorker.ready
+      .then((reg) => reg.pushManager.getSubscription())
+      .then((sub) => {
+        if (!cancelled) {
+          setSubscribed(!!sub);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSubscribed(false);
+        }
+      });
+
+    fetch("/api/push/vapid-key")
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(
+            await readErrorMessage(response, "Push notifications are unavailable right now."),
+          );
+        }
+        return response.json() as Promise<{ key?: string }>;
+      })
+      .then((body) => {
+        if (cancelled || !body.key) return;
+        setVapidKey(body.key);
+        setAvailable(true);
+        setUnavailableReason(null);
+      })
+      .catch((caught) => {
+        if (cancelled) return;
+        setAvailable(false);
+        setVapidKey(null);
+        setUnavailableReason(
+          caught instanceof Error
+            ? caught.message
+            : "Push notifications are unavailable right now.",
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const subscribe = useCallback(async () => {
-    if (!supported) return;
+    if (!supported || !available || !vapidKey) return;
     setLoading(true);
+    setError(null);
     try {
       const perm = await Notification.requestPermission();
       if (perm !== "granted") return;
       const reg = await navigator.serviceWorker.ready;
-      const { key } = await fetch("/api/push/vapid-key").then((r) => r.json());
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: decodePushKey(key),
+        applicationServerKey: decodePushKey(vapidKey),
       });
       const j = sub.toJSON();
-      await fetch("/api/push/subscribe", {
+      const response = await fetch("/api/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ endpoint: j.endpoint, keys: j.keys }),
       });
+      if (!response.ok) {
+        throw new Error(
+          await readErrorMessage(response, "Failed to save the push subscription."),
+        );
+      }
       setSubscribed(true);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Push notifications could not be enabled.",
+      );
     } finally {
       setLoading(false);
     }
-  }, [supported]);
+  }, [available, supported, vapidKey]);
 
   const unsubscribe = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
       if (sub) {
-        await fetch("/api/push/unsubscribe", {
+        const response = await fetch("/api/push/unsubscribe", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ endpoint: sub.endpoint }),
         });
+        if (!response.ok) {
+          throw new Error(
+            await readErrorMessage(response, "Failed to remove the push subscription."),
+          );
+        }
         await sub.unsubscribe();
       }
       setSubscribed(false);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Push notifications could not be disabled.",
+      );
     } finally {
       setLoading(false);
     }
   }, []);
 
-  return { subscribed, supported, loading, subscribe, unsubscribe };
+  return {
+    subscribed,
+    supported,
+    available,
+    loading,
+    error,
+    unavailableReason,
+    subscribe,
+    unsubscribe,
+  };
 }
 
 /* ── useScrollToToday ───────────────────────────────────────────────────── */
@@ -411,6 +500,12 @@ export default function Home() {
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 5000);
   }, []);
 
+  useEffect(() => {
+    if (push.error) {
+      addToast("Push notifications", push.error);
+    }
+  }, [addToast, push.error]);
+
   const { data: restaurants } = useQuery<Restaurant[]>({
     queryKey: ["/api/restaurants"],
   });
@@ -478,8 +573,15 @@ export default function Home() {
               <button
                 className={`${s.iconBtn} ${push.subscribed ? s.active : ""}`}
                 onClick={push.subscribed ? push.unsubscribe : push.subscribe}
-                disabled={push.loading}
-                aria-label={push.subscribed ? "Disable push notifications" : "Enable push notifications"}
+                disabled={push.loading || !push.available}
+                aria-label={
+                  push.subscribed
+                    ? "Disable push notifications"
+                    : push.available
+                      ? "Enable push notifications"
+                      : "Push notifications unavailable"
+                }
+                title={push.available ? undefined : push.unavailableReason ?? undefined}
               >
                 {push.subscribed ? <IconBell filled /> : <IconBellOff />}
               </button>
@@ -517,7 +619,7 @@ export default function Home() {
                 <h2 className={s.sectionTitle}>New SF Restaurants</h2>
                 <p className={s.sectionMeta}>
                   <span className={s.liveDot} />
-                  Openings from the last 3 months — {restaurants?.length ?? "…"} tracked
+                  Recent openings, upcoming spots, and Michelin stars — {restaurants?.length ?? "…"} tracked
                 </p>
               </div>
               <input

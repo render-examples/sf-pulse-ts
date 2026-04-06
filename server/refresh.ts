@@ -1,13 +1,15 @@
 import type { Pool } from "pg";
 import webpush from "web-push";
-import type { Event, NewRestaurant } from "./storage.js";
+import type { NewEvent, NewRestaurant } from "./storage.js";
 import * as storage from "./storage.js";
 import { getVapidConfig, isTrustedPushEndpoint } from "./security.js";
 import { broadcast } from "./sse.js";
+import { buildEventIdentityKey } from "../shared/event-identity.ts";
+import { normalizeDateText } from "../shared/dates.ts";
 
 export interface ApplyDiscoveredItemsInput {
   restaurants?: NewRestaurant[];
-  events?: Array<Omit<Event, "id" | "added_at">>;
+  events?: NewEvent[];
 }
 
 export interface ApplyDiscoveredItemsResult {
@@ -88,6 +90,18 @@ export async function applyDiscoveredItems(
   }
 
   for (const event of events) {
+    const existing = await storage.getEventByDedupeKey(
+      buildEventIdentityKey({
+        title: event.title,
+        location: event.location,
+        dateText: normalizeDateText(event.date),
+      }),
+      pool,
+    );
+    if (existing) {
+      continue;
+    }
+
     const added = await storage.addEvent(event, pool);
     await storage.recordUpdate("event", added.title, "added", pool);
     newEvents.push(added.title);

@@ -26,6 +26,13 @@ export async function createTestDb(): Promise<PgPool> {
       replacement: string,
     ) => value.split(search).join(replacement),
   });
+  db.public.registerFunction({
+    name: "make_date",
+    args: [DataType.integer, DataType.integer, DataType.integer],
+    returns: DataType.date,
+    implementation: (year: number, month: number, day: number) =>
+      new Date(Date.UTC(year, month - 1, day)),
+  });
   const { Pool } = db.adapters.createPg();
   const pool = new Pool() as unknown as PgPool;
   const { migrate } = await import("./migrate.js");

@@ -28,6 +28,13 @@ function freshPool(): PgPool {
       replacement: string,
     ) => value.split(search).join(replacement),
   });
+  db.public.registerFunction({
+    name: "make_date",
+    args: [DataType.integer, DataType.integer, DataType.integer],
+    returns: DataType.date,
+    implementation: (year: number, month: number, day: number) =>
+      new Date(Date.UTC(year, month - 1, day)),
+  });
   const { Pool } = db.adapters.createPg();
   return new Pool() as unknown as PgPool;
 }
@@ -78,6 +85,7 @@ describe("migrate()", () => {
       "0004_restaurant_highlights_and_cron_runs",
       "0005_backfill_sf_michelin_stars",
       "0006_add_hot_path_indexes",
+      "0007_structured_dates_and_event_dedupe",
     ]);
   });
 
@@ -87,7 +95,7 @@ describe("migrate()", () => {
     await migrate(pool, MIGRATIONS_DIR);
 
     const { rows } = await pool.query("SELECT COUNT(*)::int AS n FROM schema_migrations");
-    assert.equal((rows[0] as { n: number }).n, 6);
+    assert.equal((rows[0] as { n: number }).n, 7);
   });
 
   it("seeds the current San Francisco Michelin-starred restaurants", async () => {
@@ -228,5 +236,72 @@ describe("migrate()", () => {
 
     assert.equal(restaurantCountBefore?.n, restaurantCountAfter?.n);
     assert.deepEqual(rows, [{ version: "0006_add_hot_path_indexes" }]);
+  });
+
+  it("0007 adds structured date columns and backfills event dedupe keys", async () => {
+    const pool = freshPool();
+    const baseDir = await migrationDirWith([
+      "0001_initial.sql",
+      "0002_menu_dietary.sql",
+      "0003_escape_event_titles.sql",
+      "0004_restaurant_highlights_and_cron_runs.sql",
+      "0005_backfill_sf_michelin_stars.sql",
+      "0006_add_hot_path_indexes.sql",
+    ]);
+    const structuredDir = await migrationDirWith([
+      "0007_structured_dates_and_event_dedupe.sql",
+    ]);
+
+    await migrate(pool, baseDir);
+    await migrate(pool, structuredDir);
+    await migrate(pool, structuredDir);
+
+    const {
+      rows: [restaurant],
+    } = await pool.query<{
+      opened_start_date: string | null;
+      opened_end_date: string | null;
+      opened_date_precision: string;
+      is_upcoming: boolean;
+    }>(
+      `SELECT opened_start_date, opened_end_date, opened_date_precision, is_upcoming
+       FROM restaurants
+       WHERE name = 'Maillards'`,
+    );
+    assert.deepEqual(restaurant, {
+      opened_start_date: null,
+      opened_end_date: null,
+      opened_date_precision: "unknown",
+      is_upcoming: false,
+    });
+
+    const {
+      rows: [event],
+    } = await pool.query<{
+      start_date: string | null;
+      end_date: string | null;
+      date_precision: string;
+      dedupe_key: string;
+    }>(
+      `SELECT start_date, end_date, date_precision, dedupe_key
+       FROM events
+       WHERE title = 'San Francisco Carnaval Festival &amp; Parade'`,
+    );
+    assert.deepEqual(event, {
+      start_date: null,
+      end_date: null,
+      date_precision: "unknown",
+      dedupe_key:
+        "san francisco carnaval festival &amp; parade|mission district (harrison st, 17 blocks)|may 23–24, 2026",
+    });
+
+    await assert.rejects(
+      () =>
+        pool.query(
+          `INSERT INTO events (title, location, date, dedupe_key)
+           VALUES ('San Francisco Carnaval Festival &amp; Parade', 'Mission District (Harrison St, 17 blocks)', 'May 23–24, 2026', 'san francisco carnaval festival &amp; parade|mission district (harrison st, 17 blocks)|may 23–24, 2026')`,
+        ),
+      /duplicate|unique/i,
+    );
   });
 });
