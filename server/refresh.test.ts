@@ -11,6 +11,8 @@ import {
   getEvents,
   getRecentUpdates,
   getRestaurants,
+  getSubscriptions,
+  removeSubscription,
 } from "./storage.js";
 
 const restaurant = {
@@ -35,10 +37,16 @@ describe("applyDiscoveredItems()", () => {
   let pool: PgPool;
   const originalSendNotification = webpush.sendNotification;
 
+  async function clearSubscriptions(): Promise<void> {
+    const subs = await getSubscriptions(pool);
+    await Promise.all(subs.map((sub) => removeSubscription(sub.endpoint, pool)));
+  }
+
   before(async () => {
     pool = await createTestDb();
     await clearRestaurants(pool);
     await clearEvents(pool);
+    await clearSubscriptions();
   });
 
   after(() => {
@@ -105,8 +113,9 @@ describe("applyDiscoveredItems()", () => {
   it("sends push notifications for new discoveries", async () => {
     await clearRestaurants(pool);
     await clearEvents(pool);
+    await clearSubscriptions();
     await addSubscription(
-      "https://push.example.com/subscription",
+      "https://fcm.googleapis.com/fcm/send/subscription",
       { p256dh: "p256", auth: "auth" },
       pool,
     );
@@ -126,5 +135,33 @@ describe("applyDiscoveredItems()", () => {
     assert.equal(notifications[0].title, "SF Pulse update");
     assert.match(notifications[0].body, /Route Test Bistro/);
     assert.match(notifications[0].body, /Route Test Concert/);
+  });
+
+  it("drops untrusted stored subscriptions before sending notifications", async () => {
+    await clearRestaurants(pool);
+    await clearEvents(pool);
+    await clearSubscriptions();
+    await addSubscription(
+      "https://fcm.googleapis.com/fcm/send/valid-subscription",
+      { p256dh: "p256", auth: "auth" },
+      pool,
+    );
+    await addSubscription(
+      "https://attacker.example.com/push",
+      { p256dh: "p256", auth: "auth" },
+      pool,
+    );
+
+    const endpoints: string[] = [];
+    webpush.sendNotification = (async (subscription) => {
+      endpoints.push(String(subscription.endpoint));
+      return {} as never;
+    }) as typeof webpush.sendNotification;
+
+    await applyDiscoveredItems({ restaurants: [restaurant] }, pool);
+
+    assert.deepEqual(endpoints, ["https://fcm.googleapis.com/fcm/send/valid-subscription"]);
+    const subs = await getSubscriptions(pool);
+    assert.ok(!subs.some((sub) => sub.endpoint === "https://attacker.example.com/push"));
   });
 });

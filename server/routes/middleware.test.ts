@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { Request, Response, NextFunction } from "express";
 import { requireCronSecret } from "./middleware.js";
 
-function makeReq(header?: string): Request {
+function makeReq(header?: string | string[]): Request {
   return { headers: { "x-cron-secret": header } } as unknown as Request;
 }
 
@@ -60,6 +60,16 @@ describe("requireCronSecret middleware", () => {
     const next: NextFunction = () => { called = true; };
     const res = makeRes();
     requireCronSecret(makeReq("wrong"), res as unknown as Response, next);
+    assert.ok(!called);
+    assert.equal(res.statusCode, 401);
+  });
+
+  it("returns 401 when the header is provided multiple times", () => {
+    process.env.CRON_SECRET = "s3cr3t";
+    let called = false;
+    const next: NextFunction = () => { called = true; };
+    const res = makeRes();
+    requireCronSecret(makeReq(["s3cr3t", "wrong"]), res as unknown as Response, next);
     assert.ok(!called);
     assert.equal(res.statusCode, 401);
   });

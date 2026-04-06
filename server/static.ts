@@ -4,6 +4,7 @@ import path from "path";
 import * as storage from "./storage.js";
 import type { Pool } from "pg";
 import type { InitialData } from "../client/src/types";
+import { renderInitialDataScript } from "./security.js";
 
 // The SSR server bundle is built by bin/build.ts alongside the client bundle.
 // It exports renderApp(data: InitialData): string
@@ -57,10 +58,7 @@ export function serveStatic(app: Express, pool?: Pool) {
 
       const html = indexHtml
         .replace("<!--ssr-outlet-->", appHtml)
-        .replace(
-          "<!--ssr-data-->",
-          `<script>window.__INITIAL_DATA__ = ${JSON.stringify(initialData)};</script>`
-        );
+        .replace("<!--ssr-data-->", renderInitialDataScript(initialData));
 
       res.status(200).set({ "Content-Type": "text/html" }).end(html);
     } catch (e) {

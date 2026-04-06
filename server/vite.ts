@@ -7,6 +7,7 @@ import { nanoid } from "nanoid";
 import * as storage from "./storage.js";
 import type { Pool } from "pg";
 import type { InitialData } from "../client/src/types";
+import { renderInitialDataScript } from "./security.js";
 
 const viteLogger = createLogger();
 
@@ -73,10 +74,7 @@ export async function setupVite(server: Server, app: Express, pool?: Pool) {
 
       const html = template
         .replace("<!--ssr-outlet-->", appHtml)
-        .replace(
-          "<!--ssr-data-->",
-          `<script>window.__INITIAL_DATA__ = ${JSON.stringify(initialData)};</script>`
-        );
+        .replace("<!--ssr-data-->", renderInitialDataScript(initialData));
 
       res.status(200).set({ "Content-Type": "text/html" }).end(html);
     } catch (e) {

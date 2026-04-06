@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
+import { secretsEqual } from "../security.js";
 
 /**
  * Express middleware that gates a route behind CRON_SECRET.
@@ -10,7 +11,7 @@ export function requireCronSecret(req: Request, res: Response, next: NextFunctio
     res.status(503).json({ error: "CRON_SECRET is not configured" });
     return;
   }
-  if (req.headers["x-cron-secret"] !== secret) {
+  if (!secretsEqual(secret, req.headers["x-cron-secret"])) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }

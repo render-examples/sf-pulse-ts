@@ -1,10 +1,10 @@
-import { describe, it, before } from "node:test";
+import { afterEach, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { Pool as PgPool } from "pg";
 import { createApp } from "../app.js";
 import { makeRequestAgent, type RequestAgent } from "../test-agent.js";
 import { createTestDb } from "../test-helpers.js";
-import { addRestaurant, addEvent } from "../storage.js";
+import { addRestaurant, addEvent, clearEvents, clearRestaurants } from "../storage.js";
 
 function makeAgent(pool: PgPool) {
   const { app } = createApp(pool);
@@ -13,9 +13,21 @@ function makeAgent(pool: PgPool) {
 
 describe("GET /api/rss.xml", () => {
   let agent: RequestAgent;
+  const originalAppUrl = process.env.APP_URL;
+
+  afterEach(() => {
+    if (originalAppUrl === undefined) {
+      delete process.env.APP_URL;
+    } else {
+      process.env.APP_URL = originalAppUrl;
+    }
+  });
 
   before(async () => {
+    delete process.env.APP_URL;
     const pool = await createTestDb();
+    await clearRestaurants(pool);
+    await clearEvents(pool);
     await addRestaurant(
       {
         name: "RSS Bistro",
@@ -90,5 +102,21 @@ describe("GET /api/rss.xml", () => {
     const res = await agent.get("/api/rss.xml");
     assert.ok(res.text.includes("rel=\"self\""), "should have atom self link");
     assert.ok(res.text.includes("/api/rss.xml"), "self link should point to the feed URL");
+  });
+
+  it("does not trust the Host header for feed links", async () => {
+    const res = await agent
+      .get("/api/rss.xml")
+      .set("Host", "attacker.example.com");
+
+    assert.ok(res.text.includes("<link>http://127.0.0.1:5000</link>"));
+    assert.ok(!res.text.includes("attacker.example.com"));
+  });
+
+  it("prefers APP_URL when configured", async () => {
+    process.env.APP_URL = "https://sfpulse.example.com/";
+    const res = await agent.get("/api/rss.xml");
+
+    assert.ok(res.text.includes("<link>https://sfpulse.example.com</link>"));
   });
 });

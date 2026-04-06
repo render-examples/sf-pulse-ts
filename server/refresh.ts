@@ -2,6 +2,7 @@ import type { Pool } from "pg";
 import webpush from "web-push";
 import type { Event, NewRestaurant } from "./storage.js";
 import * as storage from "./storage.js";
+import { isTrustedPushEndpoint } from "./security.js";
 import { broadcast } from "./sse.js";
 
 const VAPID_PUBLIC_KEY =
@@ -38,16 +39,21 @@ async function pushToAll(
   pool?: Pool,
 ): Promise<void> {
   const subs = await storage.getSubscriptions(pool);
-  const sends = subs.map((sub) =>
-    webpush
+  const sends = subs.map(async (sub) => {
+    if (!isTrustedPushEndpoint(sub.endpoint)) {
+      await storage.removeSubscription(sub.endpoint, pool);
+      return;
+    }
+
+    return webpush
       .sendNotification(
         { endpoint: sub.endpoint, keys: sub.keys },
         JSON.stringify({ title, body }),
       )
       .catch(() => {
         storage.removeSubscription(sub.endpoint, pool);
-      }),
-  );
+      });
+  });
   await Promise.allSettled(sends);
 }
 

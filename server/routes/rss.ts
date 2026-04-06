@@ -1,6 +1,7 @@
 import { Router } from "express";
 import type { Pool } from "pg";
 import * as storage from "../storage.js";
+import { getPublicAppUrl } from "../security.js";
 
 /**
  * Mounts at /api/rss — provides:
@@ -9,10 +10,8 @@ import * as storage from "../storage.js";
 export function rssRoutes(pool?: Pool): Router {
   const router = Router();
 
-  router.get("/", async (req, res) => {
-    const appUrl =
-      process.env.APP_URL ||
-      `${req.protocol}://${req.get("host")}`;
+  router.get("/", async (_req, res) => {
+    const appUrl = getPublicAppUrl();
 
     const [restaurants, events] = await Promise.all([
       storage.getRestaurants(pool),

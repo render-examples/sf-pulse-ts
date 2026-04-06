@@ -1,6 +1,10 @@
 import { Router } from "express";
 import type { Pool } from "pg";
 import * as storage from "../storage.js";
+import {
+  parsePushSubscriptionBody,
+  parsePushUnsubscribeBody,
+} from "../security.js";
 
 export function pushRoutes(pool?: Pool): Router {
   const router = Router();
@@ -13,17 +17,21 @@ export function pushRoutes(pool?: Pool): Router {
   });
 
   router.post("/subscribe", async (req, res) => {
-    const { endpoint, keys } = req.body;
-    if (!endpoint || !keys?.p256dh || !keys?.auth) {
-      return res.status(400).json({ error: "Missing endpoint or keys" });
+    const parsed = parsePushSubscriptionBody(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid subscription" });
     }
+    const { endpoint, keys } = parsed.data;
     const sub = await storage.addSubscription(endpoint, keys, pool);
     res.json(sub);
   });
 
   router.post("/unsubscribe", async (req, res) => {
-    const { endpoint } = req.body;
-    if (!endpoint) return res.status(400).json({ error: "Missing endpoint" });
+    const parsed = parsePushUnsubscribeBody(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid subscription" });
+    }
+    const { endpoint } = parsed.data;
     await storage.removeSubscription(endpoint, pool);
     res.json({ ok: true });
   });

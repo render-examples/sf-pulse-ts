@@ -31,7 +31,7 @@ describe("GET /api/push/vapid-key", () => {
 
 describe("push subscription endpoints", () => {
   let agent: RequestAgent;
-  const endpoint = "https://push.example.com/test-sub";
+  const endpoint = "https://fcm.googleapis.com/fcm/send/test-sub";
   const keys = { p256dh: "p256key", auth: "authkey" };
 
   before(async () => {
@@ -61,6 +61,14 @@ describe("push subscription endpoints", () => {
     assert.equal(res.status, 400);
   });
 
+  it("POST /api/push/subscribe rejects untrusted endpoints", async () => {
+    const res = await agent
+      .post("/api/push/subscribe")
+      .send({ endpoint: "https://attacker.example.com/push", keys });
+    assert.equal(res.status, 400);
+    assert.match(String((res.body as { error?: string }).error), /trusted web-push provider/i);
+  });
+
   it("POST /api/push/unsubscribe returns { ok: true }", async () => {
     const res = await agent
       .post("/api/push/unsubscribe")
@@ -71,6 +79,13 @@ describe("push subscription endpoints", () => {
 
   it("POST /api/push/unsubscribe returns 400 when endpoint is missing", async () => {
     const res = await agent.post("/api/push/unsubscribe").send({});
+    assert.equal(res.status, 400);
+  });
+
+  it("POST /api/push/unsubscribe rejects untrusted endpoints", async () => {
+    const res = await agent
+      .post("/api/push/unsubscribe")
+      .send({ endpoint: "https://attacker.example.com/push" });
     assert.equal(res.status, 400);
   });
 });
