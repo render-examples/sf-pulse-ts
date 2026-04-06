@@ -1,8 +1,123 @@
 diff --git a/node_modules/pg-mem/index.js b/node_modules/pg-mem/index.js
-index 15cbc92..c3968c5 100644
+index 15cbc92..c7aa727 100644
 --- a/node_modules/pg-mem/index.js
 +++ b/node_modules/pg-mem/index.js
-@@ -11307,6 +11307,12 @@ class ExecuteCreateTable extends exec_utils_1.ExecHelper {
+@@ -1178,10 +1178,13 @@ function typeDefToStr(t) {
+ 
+ Object.defineProperty(exports, "__esModule", { value: true });
+ exports.withNameResolver = exports.withParameters = exports.withStatement = exports.withSelection = void 0;
++exports.resolveOuterAlias = resolveOuterAlias;
++exports.resolveOuterColumn = resolveOuterColumn;
+ exports.buildCtx = buildCtx;
+ exports.withBindingScope = withBindingScope;
+ exports.resolveName = resolveName;
+ const interfaces_private_1 = __webpack_require__(1);
++const utils_1 = __webpack_require__(0);
+ class StackOf {
+     constructor(name) {
+         this.name = name;
+@@ -1211,6 +1214,27 @@ const _statementStack = new StackOf('execution statement');
+ const _tempBindings = new StackOf('binding context');
+ const _parametersStack = new StackOf('parameter context');
+ const _nameResolver = new StackOf('name resolver');
++function resolveOuterColumn(column) {
++    for (let i = _selectionStack.stack.length - 2; i >= 0; i--) {
++        const found = _selectionStack.stack[i].getColumn(column, true);
++        if (found) {
++            return found.setWrapper(found.origin, (raw) => {
++                var _a;
++                return (_a = (0, utils_1.executionCtx)().outerRaw) !== null && _a !== void 0 ? _a : raw;
++            }, found.type);
++        }
++    }
++    return null;
++}
++function resolveOuterAlias(alias) {
++    for (let i = _selectionStack.stack.length - 2; i >= 0; i--) {
++        const found = _selectionStack.stack[i].selectAlias(alias);
++        if (found) {
++            return found;
++        }
++    }
++    return null;
++}
+ class Context {
+     constructor() {
+         this.onFinishExecution = (callback) => {
+@@ -1515,13 +1539,17 @@ function _buildValueReal(val) {
+             if (found) {
+                 return found;
+             }
++            const outerFound = context_1.resolveOuterColumn(val);
++            if (outerFound) {
++                return outerFound;
++            }
+             // try to get a parameter reference
+             const arg = !val.table && getParameter(val.name);
+             if (arg) {
+                 return arg;
+             }
+             // try to select an aliased record (= a table)
+-            const alias = !val.table && selection.selectAlias(val.name);
++            const alias = !val.table && (selection.selectAlias(val.name) || context_1.resolveOuterAlias(val.name));
+             if (alias) {
+                 return buildRecord(alias);
+             }
+@@ -2062,11 +2090,16 @@ function buildSelectAsArray(op) {
+     return new evaluator_1.Evaluator(onData.columns[0].type.asList(), null, Math.random().toString() // must not be indexable => always different hash
+     , null // , onData.columns[0]
+     , (raw, t) => {
+-        const ret = [];
+-        for (const v of onData.enumerate(t)) {
+-            ret.push(onData.columns[0].get(v, t));
+-        }
+-        return ret;
++        return (0, utils_1.pushExecutionCtx)({
++            ...(0, utils_1.executionCtx)(),
++            outerRaw: raw,
++        }, () => {
++            const ret = [];
++            for (const v of onData.enumerate(t)) {
++                ret.push(onData.columns[0].get(v, t));
++            }
++            return ret;
++        });
+     }, {
+         forceNotConstant: true
+     });
+@@ -3030,12 +3063,14 @@ function buildWith(p, topLevel) {
+     return (0, context_1.withBindingScope)(() => {
+         const { setTempBinding } = (0, context_1.buildCtx)();
+         // declare temp bindings
+-        for (const { alias, statement } of p.bind) {
+-            const prepared = (topLevel ? buildWithable(statement) : buildSelect(checkReadonlyWithable(statement)))
++        for (const { alias, statement, columnNames } of p.bind) {
++            const prepared = mapColumns(alias.name, (topLevel ? buildWithable(statement) : buildSelect(checkReadonlyWithable(statement))), columnNames, true)
+                 .setAlias(alias.name);
+             setTempBinding(alias.name, prepared);
+         }
+-        return buildSelect(checkReadonlyWithable(p.in));
++        return topLevel
++            ? buildWithable(p.in)
++            : buildSelect(checkReadonlyWithable(p.in));
+     });
+ }
+ function buildRawSelectSubject(p) {
+@@ -3300,9 +3335,11 @@ class Evaluator {
+             for (const d of depArray) {
+                 if (d.origin) {
+                     if (this.origin && d.origin && this.origin !== d.origin) {
+-                        throw new Error('You cannot evaluate an expression which is coming from multiple origins');
++                        this.origin = null;
++                    }
++                    else {
++                        this.origin = d.origin;
+                     }
+-                    this.origin = d.origin;
+                 }
+                 if (!d.isConstant) {
+                     hasNotConstant = true;
+@@ -11307,6 +11344,12 @@ class ExecuteCreateTable extends exec_utils_1.ExecHelper {
                      }
                      // TODO: #collation
                      (0, utils_1.ignore)(f.collate);

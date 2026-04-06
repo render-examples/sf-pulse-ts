@@ -1,5 +1,6 @@
 import type { Pool } from "pg";
 import { pool as defaultPool, query, queryOne, execute } from "./db.js";
+import { compareDateText } from "../shared/dates.ts";
 
 export interface DietaryFlag {
   available: boolean;
@@ -19,6 +20,7 @@ export interface Restaurant {
   cuisine: string;
   address: string | null;
   opened_date: string;
+  highlight_kind: "opening" | "michelin";
   source_url: string | null;
   menu_url: string | null;
   menu_checked_at: string | null;
@@ -52,6 +54,11 @@ export interface DataUpdate {
   occurred_at: string;
 }
 
+export interface CronRun {
+  job_name: string;
+  last_ran_at: string;
+}
+
 // Helper: use injected pool if provided, otherwise use module-level helpers
 // that reference the singleton pool from db.ts.
 function q<T>(sql: string, params?: unknown[], pool?: Pool): Promise<T[]> {
@@ -82,17 +89,71 @@ export function getRestaurants(pool?: Pool): Promise<Restaurant[]> {
   return q<Restaurant>("SELECT * FROM restaurants ORDER BY added_at DESC", [], pool);
 }
 
-export type NewRestaurant = Omit<Restaurant, "id" | "added_at" | "menu_url" | "menu_checked_at" | "dietary_flags">;
+export type NewRestaurant = Omit<
+  Restaurant,
+  "id" | "added_at" | "menu_url" | "menu_checked_at" | "dietary_flags" | "highlight_kind"
+> & {
+  highlight_kind?: Restaurant["highlight_kind"];
+};
 
 export async function addRestaurant(
   r: NewRestaurant,
   pool?: Pool
 ): Promise<Restaurant> {
   return q1<Restaurant>(
-    `INSERT INTO restaurants (name, neighborhood, cuisine, address, opened_date, source_url)
-     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-    [r.name, r.neighborhood, r.cuisine, r.address ?? null, r.opened_date, r.source_url ?? null],
+    `INSERT INTO restaurants (name, neighborhood, cuisine, address, opened_date, source_url, highlight_kind)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+    [
+      r.name,
+      r.neighborhood,
+      r.cuisine,
+      r.address ?? null,
+      r.opened_date,
+      r.source_url ?? null,
+      r.highlight_kind ?? "opening",
+    ],
     pool
+  ) as Promise<Restaurant>;
+}
+
+export function getRestaurantByName(
+  name: string,
+  pool?: Pool,
+): Promise<Restaurant | undefined> {
+  return q1<Restaurant>(
+    "SELECT * FROM restaurants WHERE lower(name) = lower($1) LIMIT 1",
+    [name],
+    pool,
+  );
+}
+
+export async function updateRestaurant(
+  id: number,
+  r: NewRestaurant,
+  pool?: Pool,
+): Promise<Restaurant> {
+  return q1<Restaurant>(
+    `UPDATE restaurants
+     SET name = $1,
+         neighborhood = $2,
+         cuisine = $3,
+         address = $4,
+         opened_date = $5,
+         source_url = $6,
+         highlight_kind = $7
+     WHERE id = $8
+     RETURNING *`,
+    [
+      r.name,
+      r.neighborhood,
+      r.cuisine,
+      r.address ?? null,
+      r.opened_date,
+      r.source_url ?? null,
+      r.highlight_kind ?? "opening",
+      id,
+    ],
+    pool,
   ) as Promise<Restaurant>;
 }
 
@@ -106,8 +167,9 @@ export async function deleteRestaurant(id: number, pool?: Pool): Promise<void> {
 
 // ── Events ───────────────────────────────────────────────────────────────────
 
-export function getEvents(pool?: Pool): Promise<Event[]> {
-  return q<Event>("SELECT * FROM events ORDER BY added_at DESC", [], pool);
+export async function getEvents(pool?: Pool): Promise<Event[]> {
+  const events = await q<Event>("SELECT * FROM events", [], pool);
+  return events.sort((a, b) => compareDateText(a.date, b.date));
 }
 
 export async function addEvent(
@@ -180,6 +242,26 @@ export async function recordUpdate(
     [type, item_name, action],
     pool
   ) as Promise<DataUpdate>;
+}
+
+export function getCronRun(jobName: string, pool?: Pool): Promise<CronRun | undefined> {
+  return q1<CronRun>(
+    "SELECT * FROM cron_runs WHERE job_name = $1",
+    [jobName],
+    pool,
+  );
+}
+
+export async function markCronRun(jobName: string, pool?: Pool): Promise<CronRun> {
+  return q1<CronRun>(
+    `INSERT INTO cron_runs (job_name, last_ran_at)
+     VALUES ($1, NOW())
+     ON CONFLICT (job_name)
+     DO UPDATE SET last_ran_at = EXCLUDED.last_ran_at
+     RETURNING *`,
+    [jobName],
+    pool,
+  ) as Promise<CronRun>;
 }
 
 // ── Menu / dietary ────────────────────────────────────────────────────────────

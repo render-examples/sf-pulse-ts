@@ -27,7 +27,7 @@ export function buildTimeline<T>(
     const row: TimelineDataRow<T> = {
       kind: "data",
       item,
-      sortMs: parseDate(dateStr)?.getTime() ?? Number.POSITIVE_INFINITY,
+      sortMs: parseDate(dateStr, reference)?.getTime() ?? Number.POSITIVE_INFINITY,
     };
 
     if (isTodayOrPotentialFuture(dateStr, reference)) {

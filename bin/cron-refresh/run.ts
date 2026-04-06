@@ -1,10 +1,13 @@
 import { applyDiscoveredItems } from "../../server/refresh.js";
 import {
   getEvents,
+  getCronRun,
   getRestaurants,
   getRestaurantsNeedingMenuCheck,
+  markCronRun,
   updateRestaurantMenu,
 } from "../../server/storage.js";
+import { normalizeDateText } from "../../shared/dates.ts";
 import { stripHtml } from "./html.js";
 import { searchWeb } from "./http.js";
 import { discoverMenu } from "./menu.js";
@@ -17,9 +20,13 @@ import {
 import {
   extractRestaurants,
   fetchEaterSF,
+  fetchMichelinCaliforniaSelection,
   fetchSFist,
 } from "./restaurants.js";
 import type { NewEvent, NewRestaurant } from "./types.js";
+
+const MICHELIN_CRON_JOB = "michelin_california_selection";
+const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
 
 function settled<T>(
   result: PromiseSettledResult<T>,
@@ -44,6 +51,17 @@ async function currentLists(): Promise<{
     restaurantNames: restaurants.map((restaurant) => restaurant.name.toLowerCase()),
     eventTitles: events.map((event) => event.title.toLowerCase()),
   };
+}
+
+export function isCronJobDue(
+  lastRunAt: string | null | undefined,
+  intervalMs: number,
+  reference = new Date(),
+): boolean {
+  if (!lastRunAt) return true;
+  const lastRun = new Date(lastRunAt);
+  if (Number.isNaN(lastRun.getTime())) return true;
+  return reference.getTime() - lastRun.getTime() >= intervalMs;
 }
 
 export async function main(): Promise<void> {
@@ -79,6 +97,25 @@ export async function main(): Promise<void> {
     newRestaurants.push(restaurant);
   }
 
+  const michelinRun = await getCronRun(MICHELIN_CRON_JOB);
+  if (isCronJobDue(michelinRun?.last_ran_at, THREE_DAYS_MS)) {
+    console.log("[cron] checking Michelin California selection...");
+    try {
+      const michelinItems = await fetchMichelinCaliforniaSelection();
+      for (const restaurant of michelinItems) {
+        const key = restaurant.name.toLowerCase();
+        if (newRestaurants.some((candidate) => candidate.name.toLowerCase() === key)) {
+          continue;
+        }
+        newRestaurants.push(restaurant);
+      }
+      await markCronRun(MICHELIN_CRON_JOB);
+      console.log(`[cron] Michelin candidates: ${michelinItems.length}`);
+    } catch (error) {
+      console.error("[cron] Michelin selection check failed:", error);
+    }
+  }
+
   console.log("[cron] fetching event sources...");
   const [funcheapResult, famsfResult, calAcademyResult, ddgEventsResult] =
     await Promise.allSettled([
@@ -111,7 +148,10 @@ export async function main(): Promise<void> {
     const key = event.title.toLowerCase();
     if (seenTitles.has(key)) continue;
     seenTitles.add(key);
-    newEvents.push(event);
+    newEvents.push({
+      ...event,
+      date: normalizeDateText(event.date),
+    });
   }
 
   console.log(

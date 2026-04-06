@@ -1,10 +1,13 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  extractMichelinPublicationUrls,
   extractRestaurants,
   fetchEaterSF,
+  fetchMichelinCaliforniaSelection,
   fetchSFist,
   parseEaterArticle,
+  parseMichelinSelectionPage,
 } from "../cron-refresh.js";
 import { readFixture } from "./test-helpers.js";
 
@@ -191,6 +194,103 @@ describe("fetchSFist()", () => {
       assert.equal(results.length, 1);
       assert.equal(results[0].name, "Foxtail");
       assert.equal(results[0].source_url, "https://sfist.com/foxtail");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+describe("parseMichelinSelectionPage()", () => {
+  it("extracts San Francisco restaurants with star counts and publication date", () => {
+    const html = `
+      <article>
+        <p class="ds__addon-end-content">08-06-2024</p>
+        <span>Two MICHELIN Stars</span>
+        <span>Sons &amp; Daughters (San Francisco; Contemporary)</span>
+        <span>Aubergine (Carmel-by-the-Sea; Contemporary)</span>
+        <span>One MICHELIN Star</span>
+        <span>Hilda and Jesse (San Francisco; American)</span>
+        <span>7 Adams (San Francisco; Californian)</span>
+        <span>Hero Award</span>
+      </article>
+    `;
+
+    const results = parseMichelinSelectionPage(
+      html,
+      "https://www.michelin.com/en/publications/products-and-services/michelin-guide-california-2024-selection",
+    );
+
+    assert.deepEqual(
+      results.map((result) => ({
+        name: result.name,
+        opened_date: result.opened_date,
+        highlight_kind: result.highlight_kind,
+      })),
+      [
+        {
+          name: "Sons & Daughters",
+          opened_date: "2 stars · August 6, 2024",
+          highlight_kind: "michelin",
+        },
+        {
+          name: "Hilda and Jesse",
+          opened_date: "1 star · August 6, 2024",
+          highlight_kind: "michelin",
+        },
+        {
+          name: "7 Adams",
+          opened_date: "1 star · August 6, 2024",
+          highlight_kind: "michelin",
+        },
+      ],
+    );
+  });
+});
+
+describe("extractMichelinPublicationUrls()", () => {
+  it("extracts Michelin publication URLs from search HTML", () => {
+    const html = `
+      <a href="https://www.michelin.com/en/publications/products-and-services/michelin-guide-california-2024-selection">direct</a>
+      <a href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.michelin.com%2Fen%2Fpublications%2Fproducts-and-services%2Fmichelin-guide-california-2025-selection">encoded</a>
+    `;
+
+    assert.deepEqual(extractMichelinPublicationUrls(html), [
+      "https://www.michelin.com/en/publications/products-and-services/michelin-guide-california-2024-selection",
+      "https://www.michelin.com/en/publications/products-and-services/michelin-guide-california-2025-selection",
+    ]);
+  });
+});
+
+describe("fetchMichelinCaliforniaSelection()", () => {
+  it("uses the current-year Michelin publication when available", async () => {
+    const originalFetch = globalThis.fetch;
+    const michelinHtml = `
+      <article>
+        <p class="ds__addon-end-content">08-06-2024</p>
+        <span>One MICHELIN Star</span>
+        <span>Hilda and Jesse (San Francisco; American)</span>
+      </article>
+    `;
+
+    globalThis.fetch = (async (input: string | URL | RequestInfo) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+      if (url === "https://www.michelin.com/en/publications/products-and-services/michelin-guide-california-2024-selection") {
+        return new Response(michelinHtml, { status: 200 });
+      }
+      return new Response("", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const results = await fetchMichelinCaliforniaSelection(
+        new Date(Date.UTC(2024, 7, 10)),
+      );
+      assert.deepEqual(results.map((result) => result.name), ["Hilda and Jesse"]);
     } finally {
       globalThis.fetch = originalFetch;
     }

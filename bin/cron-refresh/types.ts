@@ -11,6 +11,7 @@ export type NewRestaurant = {
   cuisine: string;
   address: string | null;
   opened_date: string;
+  highlight_kind?: "opening" | "michelin";
   source_url: string | null;
 };
 

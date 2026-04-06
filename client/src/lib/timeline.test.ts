@@ -41,4 +41,16 @@ describe("buildTimeline()", () => {
 
     assert.deepEqual(labels, ["Past", "Today", "Upcoming"]);
   });
+
+  it("sorts yearless future dates using the provided reference year", () => {
+    const items = [
+      { name: "May Event", date: "May 9" },
+      { name: "Next Spring", date: "March 1" },
+    ];
+
+    const rows = buildTimeline(items, (item) => item.date, reference);
+    const labels = rows.map((row) => (row.kind === "today" ? "Today" : row.item.name));
+
+    assert.deepEqual(labels, ["Today", "May Event", "Next Spring"]);
+  });
 });

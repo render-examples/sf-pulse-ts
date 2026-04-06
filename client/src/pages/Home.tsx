@@ -66,6 +66,17 @@ function IconClock() {
     </svg>
   );
 }
+function IconMichelinStar() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={s.michelinIcon}>
+      <path
+        d="M12 1.5l2.1 5.17 5.58-1.66-1.66 5.58L23.2 12l-5.17 2.1 1.66 5.58-5.58-1.66L12 23.2l-2.1-5.17-5.58 1.66 1.66-5.58L.8 12l5.17-2.1L4.31 4.32l5.58 1.66z"
+        fill="currentColor"
+      />
+      <circle cx="12" cy="12" r="3.25" fill="var(--surface)" />
+    </svg>
+  );
+}
 function IconPin() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width: 12, height: 12, display: "inline", verticalAlign: "middle", flexShrink: 0, fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }}>
@@ -117,6 +128,31 @@ function DietaryBadges({ flags }: { flags: DietaryFlags | null }) {
   );
 }
 
+function decodePushKey(value: string): Uint8Array {
+  const padded = `${value}${"=".repeat((4 - (value.length % 4)) % 4)}`
+    .replace(/-/g, "+")
+    .replace(/_/g, "/");
+  const binary = window.atob(padded);
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+
+function OpenedLabel({ restaurant }: { restaurant: Restaurant }) {
+  if (restaurant.highlight_kind !== "michelin") {
+    return (
+      <span style={{ color: "var(--text-2)", whiteSpace: "nowrap", fontSize: 12 }}>
+        {restaurant.opened_date}
+      </span>
+    );
+  }
+
+  return (
+    <span className={s.michelinOpened}>
+      <IconMichelinStar />
+      <span>{restaurant.opened_date}</span>
+    </span>
+  );
+}
+
 /* ── Push notifications ─────────────────────────────────────────────────── */
 function usePush() {
   const [subscribed, setSubscribed] = useState(false);
@@ -141,7 +177,10 @@ function usePush() {
       if (perm !== "granted") return;
       const reg = await navigator.serviceWorker.ready;
       const { key } = await fetch("/api/push/vapid-key").then((r) => r.json());
-      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: decodePushKey(key),
+      });
       const j = sub.toJSON();
       await fetch("/api/push/subscribe", {
         method: "POST",
@@ -276,7 +315,7 @@ function RestaurantTimeline({ data, filter }: { data: Restaurant[]; filter: stri
                 <td className={s.colDiet}>
                   <DietaryBadges flags={r.dietary_flags} />
                 </td>
-                <td style={{ color: "var(--text-2)", whiteSpace: "nowrap", fontSize: 12 }}>{r.opened_date}</td>
+                <td><OpenedLabel restaurant={r} /></td>
               </tr>
             );
           })}

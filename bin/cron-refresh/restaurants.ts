@@ -1,8 +1,9 @@
 import { MONTH_NAME_PATTERN } from "./constants.js";
 import { normalizeWhitespace, stripHtml } from "./html.js";
-import { fetchPageHtml } from "./http.js";
+import { fetchPageHtml, searchWeb } from "./http.js";
 import { isRecent } from "./recency.js";
 import { fetchRss } from "./rss.js";
+import { normalizeDateText } from "../../shared/dates.ts";
 import type { NewRestaurant } from "./types.js";
 
 const OPENING_KEYWORDS =
@@ -18,6 +19,8 @@ const ROUNDUP_VENUE_HINT_RE =
   /\b(?:restaurant|bar|bakery|cafe|café|pub|deli|bistro|eatery|brasserie|brewery|wine bar|food hall|coffee shop|spot|grill|kitchen)\b/i;
 const NEWS_OUTLET_RE =
   /\b(?:Eater(?: SF)?|Hoodline|East Bay Nosh|Berkeleyside|SFGATE|San Francisco Chronicle|SF Chronicle|San Francisco Standard|Mercury News|Sonoma Magazine)\b/i;
+const MICHELIN_PUBLICATION_QUERY =
+  'site:michelin.com/en/publications/products-and-services "MICHELIN Guide California" selection';
 
 export function extractRestaurants(
   text: string,
@@ -307,4 +310,154 @@ export async function fetchSFist(existing: string[]): Promise<NewRestaurant[]> {
   }
 
   return results;
+}
+
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&#x27;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
+}
+
+function michelinPublicationUrl(year: number): string {
+  return `https://www.michelin.com/en/publications/products-and-services/michelin-guide-california-${year}-selection`;
+}
+
+function michelinStarCount(heading: string): number | null {
+  if (/^One MICHELIN Star$/i.test(heading)) return 1;
+  if (/^Two MICHELIN Stars$/i.test(heading)) return 2;
+  if (/^Three MICHELIN Stars$/i.test(heading)) return 3;
+  return null;
+}
+
+function parseMichelinPublicationDate(lines: string[]): string | null {
+  const raw = lines.find((line) => /^\d{2}-\d{2}-\d{4}$/.test(line));
+  if (!raw) return null;
+
+  const [month, day, year] = raw.split("-").map((part) => Number.parseInt(part, 10));
+  if (!day || !month || !year) return null;
+
+  return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function michelinHtmlToLines(html: string): string[] {
+  return html
+    .replace(/<\/(?:p|span|div|li|h1|h2|h3|h4|h5|h6|br)>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .split(/\n+/)
+    .map((line) => normalizeWhitespace(decodeHtmlEntities(line)))
+    .filter(Boolean);
+}
+
+export function parseMichelinSelectionPage(
+  html: string,
+  sourceUrl: string,
+): NewRestaurant[] {
+  const lines = michelinHtmlToLines(html);
+  const publishedAt = parseMichelinPublicationDate(lines);
+  if (!publishedAt) return [];
+
+  const results: NewRestaurant[] = [];
+  const seen = new Set<string>();
+  let stars: number | null = null;
+
+  for (const line of lines) {
+    const nextStars = michelinStarCount(line);
+    if (nextStars !== null) {
+      stars = nextStars;
+      continue;
+    }
+
+    if (stars === null) continue;
+    if (/^Green Star|^Bib Gourmand|^Special Awards?/i.test(line)) {
+      stars = null;
+      continue;
+    }
+
+    const match = line.match(/^(.+?)\s+\((San Francisco)(?:;[^)]*)?\)$/);
+    if (!match) continue;
+
+    const name = normalizeWhitespace(match[1]);
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    results.push({
+      name,
+      neighborhood: "San Francisco",
+      cuisine: `Michelin ${stars}-star recognition`,
+      address: null,
+      opened_date: `${stars} ${stars === 1 ? "star" : "stars"} · ${publishedAt}`,
+      highlight_kind: "michelin",
+      source_url: sourceUrl,
+    });
+  }
+
+  return results;
+}
+
+export function extractMichelinPublicationUrls(searchHtml: string): string[] {
+  const urls = new Set<string>();
+
+  const directUrlRe =
+    /https:\/\/www\.michelin\.com\/en\/publications\/products-and-services\/michelin-guide-california-[^"'\s<]+/gi;
+  let directMatch: RegExpExecArray | null;
+  while ((directMatch = directUrlRe.exec(searchHtml)) !== null) {
+    urls.add(directMatch[0]);
+  }
+
+  const encodedUrlRe = /uddg=([^"&\s>]+)/gi;
+  let encodedMatch: RegExpExecArray | null;
+  while ((encodedMatch = encodedUrlRe.exec(searchHtml)) !== null) {
+    const decoded = decodeURIComponent(encodedMatch[1]);
+    if (decoded.startsWith("https://www.michelin.com/en/publications/products-and-services/")) {
+      urls.add(decoded);
+    }
+  }
+
+  return [...urls];
+}
+
+export async function fetchMichelinCaliforniaSelection(
+  reference = new Date(),
+): Promise<NewRestaurant[]> {
+  const candidateUrls = [
+    michelinPublicationUrl(reference.getUTCFullYear()),
+    michelinPublicationUrl(reference.getUTCFullYear() - 1),
+  ];
+
+  for (const url of candidateUrls) {
+    const parsed = parseMichelinSelectionPage(await fetchPageHtml(url), url);
+    if (parsed.length > 0) {
+      return parsed.map((restaurant) => ({
+        ...restaurant,
+        opened_date: normalizeDateText(restaurant.opened_date, reference),
+      }));
+    }
+  }
+
+  try {
+    const searchHtml = await searchWeb(MICHELIN_PUBLICATION_QUERY);
+    for (const url of extractMichelinPublicationUrls(searchHtml)) {
+      const parsed = parseMichelinSelectionPage(await fetchPageHtml(url), url);
+      if (parsed.length > 0) {
+        return parsed.map((restaurant) => ({
+          ...restaurant,
+          opened_date: normalizeDateText(restaurant.opened_date, reference),
+        }));
+      }
+    }
+  } catch {
+    // Ignore fallback search failures; Michelin adds are best-effort.
+  }
+
+  return [];
 }

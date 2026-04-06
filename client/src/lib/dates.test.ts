@@ -1,6 +1,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { parseDate, isUpcoming, isTodayOrPotentialFuture } from "./dates.js";
+import {
+  isTodayOrPotentialFuture,
+  isUpcoming,
+  normalizeDateText,
+  parseDate,
+} from "./dates.js";
 
 describe("parseDate()", () => {
   it("parses a month+year string", () => {
@@ -52,6 +57,22 @@ describe("parseDate()", () => {
     assert.equal(d.getUTCMonth(), 3);
     assert.equal(d.getUTCDate(), 1);
   });
+
+  it("infers the current year for month-day strings without a year", () => {
+    const reference = new Date(Date.UTC(2026, 3, 5));
+    const d = parseDate("May 9", reference)!;
+    assert.equal(d.getUTCFullYear(), 2026);
+    assert.equal(d.getUTCMonth(), 4);
+    assert.equal(d.getUTCDate(), 9);
+  });
+
+  it("rolls yearless month-day strings into next year after the month passes", () => {
+    const reference = new Date(Date.UTC(2026, 10, 5));
+    const d = parseDate("May 9", reference)!;
+    assert.equal(d.getUTCFullYear(), 2027);
+    assert.equal(d.getUTCMonth(), 4);
+    assert.equal(d.getUTCDate(), 9);
+  });
 });
 
 describe("isUpcoming", () => {
@@ -97,5 +118,22 @@ describe("isTodayOrPotentialFuture()", () => {
 
   it("treats missing precision as potentially future", () => {
     assert.ok(isTodayOrPotentialFuture("2026", reference));
+  });
+});
+
+describe("normalizeDateText()", () => {
+  it("adds the inferred year to exact dates without one", () => {
+    const reference = new Date(Date.UTC(2026, 3, 5));
+    assert.equal(normalizeDateText("May 9", reference), "May 9, 2026");
+  });
+
+  it("adds the inferred year to date ranges without one", () => {
+    const reference = new Date(Date.UTC(2026, 3, 5));
+    assert.equal(normalizeDateText("May 23–24", reference), "May 23–24, 2026");
+  });
+
+  it("rolls month-only strings into next year after the month passes", () => {
+    const reference = new Date(Date.UTC(2026, 10, 5));
+    assert.equal(normalizeDateText("May", reference), "May 2027");
   });
 });

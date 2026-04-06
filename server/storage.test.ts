@@ -11,6 +11,8 @@ import { createTestDb } from "./test-helpers.js";
 import {
   getRestaurants,
   addRestaurant,
+  getRestaurantByName,
+  updateRestaurant,
   deleteRestaurant,
   clearRestaurants,
   getEvents,
@@ -22,6 +24,8 @@ import {
   removeSubscription,
   getRecentUpdates,
   recordUpdate,
+  getCronRun,
+  markCronRun,
   getRestaurantsNeedingMenuCheck,
   updateRestaurantMenu,
 } from "./storage.js";
@@ -51,6 +55,7 @@ describe("storage — restaurants", () => {
     const r = await addRestaurant(sample, pool);
     assert.equal(r.name, sample.name);
     assert.equal(r.neighborhood, sample.neighborhood);
+    assert.equal(r.highlight_kind, "opening");
     assert.ok(typeof r.id === "number");
     assert.ok(r.added_at);
   });
@@ -87,6 +92,31 @@ describe("storage — restaurants", () => {
     assert.equal(r.address, null);
     assert.equal(r.source_url, null);
   });
+
+  it("getRestaurantByName matches case-insensitively", async () => {
+    await clearRestaurants(pool);
+    await addRestaurant(sample, pool);
+    const r = await getRestaurantByName("test bistro", pool);
+    assert.equal(r?.name, sample.name);
+  });
+
+  it("updateRestaurant can promote a row to Michelin recognition", async () => {
+    await clearRestaurants(pool);
+    const r = await addRestaurant(sample, pool);
+    const updated = await updateRestaurant(
+      r.id,
+      {
+        ...sample,
+        cuisine: "Michelin 1-star recognition",
+        opened_date: "1 star · August 6, 2024",
+        highlight_kind: "michelin",
+      },
+      pool,
+    );
+
+    assert.equal(updated.highlight_kind, "michelin");
+    assert.equal(updated.opened_date, "1 star · August 6, 2024");
+  });
 });
 
 // ── Events ────────────────────────────────────────────────────────────────────
@@ -115,12 +145,17 @@ describe("storage — events", () => {
     assert.ok(e.added_at);
   });
 
-  it("getEvents returns all rows ordered by added_at DESC", async () => {
+  it("getEvents returns rows sorted by parsed date ascending", async () => {
+    await clearEvents(pool);
+    await addEvent({ ...sample, title: "Late", date: "May 9, 2026" }, pool);
+    await addEvent({ ...sample, title: "Soon", date: "April 10, 2026" }, pool);
+    await addEvent({ ...sample, title: "Next Year", date: "March 1, 2027" }, pool);
+
     const rows = await getEvents(pool);
-    assert.ok(rows.length >= 1);
-    for (let i = 1; i < rows.length; i++) {
-      assert.ok(rows[i - 1].added_at >= rows[i].added_at);
-    }
+    assert.deepEqual(
+      rows.map((row) => row.title),
+      ["Soon", "Late", "Next Year"],
+    );
   });
 
   it("deleteEvent removes the row by id", async () => {
@@ -204,6 +239,27 @@ describe("storage — data updates", () => {
     const rows = await getRecentUpdates(2, pool);
     assert.equal(rows.length, 2);
     assert.ok(rows[0].occurred_at >= rows[1].occurred_at);
+  });
+});
+
+describe("storage — cron runs", () => {
+  let pool: PgPool;
+
+  before(async () => {
+    pool = await createTestDb();
+  });
+
+  it("markCronRun upserts the latest run time", async () => {
+    const first = await markCronRun("michelin", pool);
+    const second = await markCronRun("michelin", pool);
+    assert.equal(first.job_name, "michelin");
+    assert.equal(second.job_name, "michelin");
+    assert.ok(second.last_ran_at >= first.last_ran_at);
+  });
+
+  it("getCronRun returns undefined for unknown jobs", async () => {
+    const run = await getCronRun("does-not-exist", pool);
+    assert.equal(run, undefined);
   });
 });
 

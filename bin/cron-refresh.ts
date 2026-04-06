@@ -20,8 +20,11 @@ export {
 export { parseRss, fetchRss } from "./cron-refresh/rss.js";
 export {
   extractRestaurants,
+  extractMichelinPublicationUrls,
   parseEaterArticle,
+  parseMichelinSelectionPage,
   fetchEaterSF,
+  fetchMichelinCaliforniaSelection,
   fetchSFist,
 } from "./cron-refresh/restaurants.js";
 export {

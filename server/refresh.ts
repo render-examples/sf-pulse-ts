@@ -27,6 +27,9 @@ export interface ApplyDiscoveredItemsResult {
     restaurants: string[];
     events: string[];
   };
+  updated: {
+    restaurants: string[];
+  };
 }
 
 async function pushToAll(
@@ -54,8 +57,30 @@ export async function applyDiscoveredItems(
 ): Promise<ApplyDiscoveredItemsResult> {
   const newRestaurants: string[] = [];
   const newEvents: string[] = [];
+  const updatedRestaurants: string[] = [];
 
   for (const restaurant of restaurants) {
+    const existing = await storage.getRestaurantByName(restaurant.name, pool);
+    if (existing) {
+      if (restaurant.highlight_kind === "michelin") {
+        const nextKind = restaurant.highlight_kind ?? "opening";
+        const changed =
+          existing.highlight_kind !== nextKind ||
+          existing.opened_date !== restaurant.opened_date ||
+          existing.source_url !== (restaurant.source_url ?? null) ||
+          existing.cuisine !== restaurant.cuisine ||
+          existing.neighborhood !== restaurant.neighborhood ||
+          existing.address !== (restaurant.address ?? null);
+
+        if (changed) {
+          await storage.updateRestaurant(existing.id, restaurant, pool);
+          await storage.recordUpdate("restaurant", existing.name, "updated", pool);
+          updatedRestaurants.push(existing.name);
+        }
+      }
+      continue;
+    }
+
     const added = await storage.addRestaurant(restaurant, pool);
     await storage.recordUpdate("restaurant", added.name, "added", pool);
     newRestaurants.push(added.name);
@@ -67,7 +92,7 @@ export async function applyDiscoveredItems(
     newEvents.push(added.title);
   }
 
-  if (newRestaurants.length > 0 || newEvents.length > 0) {
+  if (newRestaurants.length > 0 || updatedRestaurants.length > 0 || newEvents.length > 0) {
     broadcast("restaurants", { action: "refresh" });
     broadcast("events", { action: "refresh" });
 
@@ -75,6 +100,11 @@ export async function applyDiscoveredItems(
     if (newRestaurants.length) {
       lines.push(
         `${newRestaurants.length} new restaurant${newRestaurants.length > 1 ? "s" : ""}: ${newRestaurants.join(", ")}`,
+      );
+    }
+    if (updatedRestaurants.length) {
+      lines.push(
+        `${updatedRestaurants.length} updated restaurant${updatedRestaurants.length > 1 ? "s" : ""}: ${updatedRestaurants.join(", ")}`,
       );
     }
     if (newEvents.length) {
@@ -86,5 +116,8 @@ export async function applyDiscoveredItems(
     await pushToAll("SF Pulse update", lines.join(" · "), pool);
   }
 
-  return { added: { restaurants: newRestaurants, events: newEvents } };
+  return {
+    added: { restaurants: newRestaurants, events: newEvents },
+    updated: { restaurants: updatedRestaurants },
+  };
 }

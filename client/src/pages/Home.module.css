@@ -260,6 +260,22 @@
   background: none !important;
 }
 
+.michelinOpened {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #b42318;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.michelinIcon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
 .todayLabel {
   display: flex;
   align-items: center;

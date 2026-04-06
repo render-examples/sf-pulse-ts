@@ -1,9 +1,11 @@
-import { describe, it, before } from "node:test";
+import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import type { Pool as PgPool } from "pg";
+import webpush from "web-push";
 import { applyDiscoveredItems } from "./refresh.js";
 import { createTestDb } from "./test-helpers.js";
 import {
+  addSubscription,
   clearEvents,
   clearRestaurants,
   getEvents,
@@ -31,11 +33,16 @@ const event = {
 
 describe("applyDiscoveredItems()", () => {
   let pool: PgPool;
+  const originalSendNotification = webpush.sendNotification;
 
   before(async () => {
     pool = await createTestDb();
     await clearRestaurants(pool);
     await clearEvents(pool);
+  });
+
+  after(() => {
+    webpush.sendNotification = originalSendNotification;
   });
 
   it("inserts restaurants and events, returns added names", async () => {
@@ -67,5 +74,57 @@ describe("applyDiscoveredItems()", () => {
     const result = await applyDiscoveredItems({}, pool);
 
     assert.deepEqual(result.added, { restaurants: [], events: [] });
+    assert.deepEqual(result.updated, { restaurants: [] });
+  });
+
+  it("updates an existing restaurant when Michelin recognition arrives", async () => {
+    await clearRestaurants(pool);
+    await applyDiscoveredItems({ restaurants: [restaurant] }, pool);
+
+    const result = await applyDiscoveredItems(
+      {
+        restaurants: [
+          {
+            ...restaurant,
+            cuisine: "Michelin 1-star recognition",
+            opened_date: "1 star · August 6, 2024",
+            highlight_kind: "michelin",
+            source_url: "https://www.michelin.com/en/publications/products-and-services/michelin-guide-california-2024-selection",
+          },
+        ],
+      },
+      pool,
+    );
+
+    const restaurants = await getRestaurants(pool);
+    assert.equal(restaurants.length, 1);
+    assert.equal(restaurants[0].highlight_kind, "michelin");
+    assert.deepEqual(result.updated.restaurants, [restaurant.name]);
+  });
+
+  it("sends push notifications for new discoveries", async () => {
+    await clearRestaurants(pool);
+    await clearEvents(pool);
+    await addSubscription(
+      "https://push.example.com/subscription",
+      { p256dh: "p256", auth: "auth" },
+      pool,
+    );
+
+    const notifications: Array<{ title: string; body: string }> = [];
+    webpush.sendNotification = (async (_subscription, payload) => {
+      notifications.push(JSON.parse(String(payload)));
+      return {} as never;
+    }) as typeof webpush.sendNotification;
+
+    await applyDiscoveredItems(
+      { restaurants: [restaurant], events: [event] },
+      pool,
+    );
+
+    assert.equal(notifications.length, 1);
+    assert.equal(notifications[0].title, "SF Pulse update");
+    assert.match(notifications[0].body, /Route Test Bistro/);
+    assert.match(notifications[0].body, /Route Test Concert/);
   });
 });

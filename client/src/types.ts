@@ -16,6 +16,7 @@ export interface Restaurant {
   cuisine: string;
   address: string | null;
   opened_date: string;
+  highlight_kind: "opening" | "michelin";
   source_url: string | null;
   menu_url: string | null;
   menu_checked_at: string | null;

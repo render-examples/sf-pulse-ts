@@ -1,0 +1,4 @@
+interface:
+  display_name: "DB Migration Idempotence"
+  short_description: "Keep migrations repeat-safe"
+  default_prompt: "Use $db-migration-idempotence to add or review a migration and prove its idempotent behavior with focused migrate() tests."

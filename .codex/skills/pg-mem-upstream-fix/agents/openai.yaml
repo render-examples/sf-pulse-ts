@@ -1,0 +1,4 @@
+interface:
+  display_name: "pg-mem Upstream Fix"
+  short_description: "Patch pg-mem, not app SQL"
+  default_prompt: "Use $pg-mem-upstream-fix to patch a valid PostgreSQL mismatch in pg-mem, add a regression test, and document the upstream PR target."

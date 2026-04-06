@@ -1,0 +1,36 @@
+diff --git a/node_modules/pgsql-ast-parser/index.js b/node_modules/pgsql-ast-parser/index.js
+index 2e90705..56a5d5d 100644
+--- a/node_modules/pgsql-ast-parser/index.js
++++ b/node_modules/pgsql-ast-parser/index.js
+@@ -4189,9 +4189,12 @@ const grammar = {
+         { "name": "with_statement_bindings", "symbols": ["with_statement_binding", "with_statement_bindings$ebnf$1"], "postprocess": ([head, tail]) => {
+                 return [head, ...(tail || [])];
+             } },
+-        { "name": "with_statement_binding", "symbols": ["word", (lexer_1.lexerAny.has("kw_as") ? { type: "kw_as" } : kw_as), "lparen", "with_statement_statement", "rparen"], "postprocess": x => (0, lexer_2.track)(x, {
++        { "name": "with_statement_binding$ebnf$1", "symbols": [], "postprocess": function(d) { return null; } },
++        { "name": "with_statement_binding$ebnf$1", "symbols": ["collist_paren"], "postprocess": id },
++        { "name": "with_statement_binding", "symbols": ["word", "with_statement_binding$ebnf$1", (lexer_1.lexerAny.has("kw_as") ? { type: "kw_as" } : kw_as), "lparen", "with_statement_statement", "rparen"], "postprocess": x => (0, lexer_2.track)(x, {
+                 alias: asName(x[0]),
+-                statement: unwrap(x[3]),
++                ...x[1] && { columnNames: x[1].map(asName) },
++                statement: unwrap(x[4]),
+             }) },
+         { "name": "with_statement_statement", "symbols": ["selection"] },
+         { "name": "with_statement_statement", "symbols": ["insert_statement"] },
+diff --git a/node_modules/pgsql-ast-parser/src/syntax/with.ne b/node_modules/pgsql-ast-parser/src/syntax/with.ne
+index a9be4d4..e5b2c79 100644
+--- a/node_modules/pgsql-ast-parser/src/syntax/with.ne
++++ b/node_modules/pgsql-ast-parser/src/syntax/with.ne
+@@ -29,9 +29,10 @@ with_statement_bindings -> with_statement_binding (comma with_statement_binding
+ } %}
+ 
+ 
+-with_statement_binding -> word %kw_as lparen with_statement_statement rparen {% x => track(x, {
++with_statement_binding -> word collist_paren:? %kw_as lparen with_statement_statement rparen {% x => track(x, {
+     alias: asName(x[0]),
+-    statement: unwrap(x[3]),
++    ...x[1] && { columnNames: x[1].map(asName) },
++    statement: unwrap(x[4]),
+ }) %}
+ 
+ with_statement_statement
