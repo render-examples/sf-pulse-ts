@@ -5,7 +5,7 @@
   "license": "MIT",
   "scripts": {
     "postinstall": "node --input-type=commonjs -e \"if (process.env.NODE_ENV !== 'production') require('child_process').execSync('patch-package', {stdio: 'inherit'})\"",
-    "dev": "NODE_ENV=development node --env-file-if-exists=.env.local --import tsx server/index.ts",
+    "dev": "NODE_ENV=development tsx watch --include server --include vite.config.ts --include .env.local --env-file-if-exists=.env.local server/index.ts",
     "build": "tsx bin/build.ts",
     "migrate": "node --env-file-if-exists=.env.local --import tsx bin/migrate.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
