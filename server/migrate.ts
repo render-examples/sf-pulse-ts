@@ -16,12 +16,10 @@ import { readdir, readFile } from "fs/promises";
 import path from "path";
 import type { Pool } from "pg";
 
-// Works in both ESM (import.meta.url) and CJS bundles (__dirname)
+// Bundled CJS uses __dirname from dist/, while source ESM runs from the repo cwd.
 export const MIGRATIONS_DIR = path.resolve(
-  typeof __dirname !== "undefined"
-    ? __dirname
-    : path.dirname(new URL(import.meta.url).pathname),
-  "../migrations"
+  typeof __dirname !== "undefined" ? __dirname : process.cwd(),
+  typeof __dirname !== "undefined" ? "../migrations" : "migrations",
 );
 
 async function ensureMigrationsTable(pool: Pool): Promise<void> {

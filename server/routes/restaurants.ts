@@ -13,7 +13,7 @@ export function restaurantRoutes(pool?: Pool): Router {
 
   router.delete("/:id", requireCronSecret, async (req, res) => {
     await storage.deleteRestaurant(Number(req.params.id), pool);
-    broadcast("restaurants", { action: "refresh" });
+    await broadcast("restaurants", { action: "refresh" });
     res.json({ ok: true });
   });
 

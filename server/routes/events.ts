@@ -13,7 +13,7 @@ export function eventRoutes(pool?: Pool): Router {
 
   router.delete("/:id", requireCronSecret, async (req, res) => {
     await storage.deleteEvent(Number(req.params.id), pool);
-    broadcast("events", { action: "refresh" });
+    await broadcast("events", { action: "refresh" });
     res.json({ ok: true });
   });
 

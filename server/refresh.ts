@@ -2,21 +2,8 @@ import type { Pool } from "pg";
 import webpush from "web-push";
 import type { Event, NewRestaurant } from "./storage.js";
 import * as storage from "./storage.js";
-import { isTrustedPushEndpoint } from "./security.js";
+import { getVapidConfig, isTrustedPushEndpoint } from "./security.js";
 import { broadcast } from "./sse.js";
-
-const VAPID_PUBLIC_KEY =
-  process.env.VAPID_PUBLIC_KEY ||
-  "BBkwZRCOJzKrYlx_-1XEbGaNmgofTxAaaIRWZzEx8MrA-C52lj6uP4Qv3Eheq3l_2GWXDNZltVpprFNG1N1QAG4";
-const VAPID_PRIVATE_KEY =
-  process.env.VAPID_PRIVATE_KEY ||
-  "tjnOZ1tYY6cLxXallojS1TP7iVIopu4ogMD6XIePbsI";
-
-webpush.setVapidDetails(
-  "mailto:sf-pulse@example.com",
-  VAPID_PUBLIC_KEY,
-  VAPID_PRIVATE_KEY
-);
 
 export interface ApplyDiscoveredItemsInput {
   restaurants?: NewRestaurant[];
@@ -38,6 +25,14 @@ async function pushToAll(
   body: string,
   pool?: Pool,
 ): Promise<void> {
+  try {
+    const vapid = getVapidConfig();
+    webpush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);
+  } catch (error) {
+    console.warn(`[push] notifications disabled: ${(error as Error).message}`);
+    return;
+  }
+
   const subs = await storage.getSubscriptions(pool);
   const sends = subs.map(async (sub) => {
     if (!isTrustedPushEndpoint(sub.endpoint)) {
@@ -99,8 +94,8 @@ export async function applyDiscoveredItems(
   }
 
   if (newRestaurants.length > 0 || updatedRestaurants.length > 0 || newEvents.length > 0) {
-    broadcast("restaurants", { action: "refresh" });
-    broadcast("events", { action: "refresh" });
+    await broadcast("restaurants", { action: "refresh" });
+    await broadcast("events", { action: "refresh" });
 
     const lines: string[] = [];
     if (newRestaurants.length) {

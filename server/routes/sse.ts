@@ -10,7 +10,7 @@ export function sseRoutes(): Router {
 
   router.get("/", (req, res) => {
     res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
     res.setHeader("Connection", "keep-alive");
     res.setHeader("X-Accel-Buffering", "no"); // Nginx/Render: disable proxy buffering
     res.flushHeaders();

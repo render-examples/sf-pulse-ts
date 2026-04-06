@@ -5,11 +5,18 @@ databases:
     plan: basic-256mb
 
 services:
+  - type: keyvalue
+    name: sf-pulse-realtime
+    plan: starter
+    maxmemoryPolicy: noeviction
+    ipAllowList: []
+
   - type: web
     name: sf-pulse
     runtime: node
     plan: starter
-    buildCommand: npm ci --include=dev && npm run build && node dist/bin/migrate.cjs
+    buildCommand: npm ci --include=dev && npm run build
+    preDeployCommand: node dist/bin/migrate.cjs
     startCommand: node dist/index.cjs
     healthCheckPath: /api/updates/last-updated
     envVars:
@@ -25,6 +32,11 @@ services:
         sync: false
       - key: CRON_SECRET
         generateValue: true
+      - key: REDIS_URL
+        fromService:
+          name: sf-pulse-realtime
+          type: keyvalue
+          property: connectionString
 
   - type: cron
     name: sf-pulse-daily
@@ -38,4 +50,9 @@ services:
       - key: DATABASE_URL
         fromDatabase:
           name: sf-pulse-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: sf-pulse-realtime
+          type: keyvalue
           property: connectionString

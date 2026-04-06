@@ -2,6 +2,8 @@ import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   getPublicAppUrl,
+  getVapidConfig,
+  getVapidPublicKey,
   isTrustedPushEndpoint,
   renderInitialDataScript,
   serializeForInlineScript,
@@ -124,6 +126,60 @@ describe("isTrustedPushEndpoint()", () => {
     assert.equal(
       isTrustedPushEndpoint("http://fcm.googleapis.com/fcm/send/abc"),
       false,
+    );
+  });
+});
+
+describe("getVapidConfig()", () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalPublicKey = process.env.VAPID_PUBLIC_KEY;
+  const originalPrivateKey = process.env.VAPID_PRIVATE_KEY;
+
+  afterEach(() => {
+    process.env.NODE_ENV = originalNodeEnv;
+    if (originalPublicKey === undefined) {
+      delete process.env.VAPID_PUBLIC_KEY;
+    } else {
+      process.env.VAPID_PUBLIC_KEY = originalPublicKey;
+    }
+    if (originalPrivateKey === undefined) {
+      delete process.env.VAPID_PRIVATE_KEY;
+    } else {
+      process.env.VAPID_PRIVATE_KEY = originalPrivateKey;
+    }
+  });
+
+  it("reads configured VAPID keys from the environment", () => {
+    process.env.VAPID_PUBLIC_KEY = "public-key";
+    process.env.VAPID_PRIVATE_KEY = "private-key";
+
+    assert.deepEqual(getVapidConfig(), {
+      publicKey: "public-key",
+      privateKey: "private-key",
+      subject: "mailto:sf-pulse@example.com",
+    });
+    assert.equal(getVapidPublicKey(), "public-key");
+  });
+
+  it("throws outside production when keys are missing", () => {
+    process.env.NODE_ENV = "test";
+    delete process.env.VAPID_PUBLIC_KEY;
+    delete process.env.VAPID_PRIVATE_KEY;
+
+    assert.throws(
+      () => getVapidConfig(),
+      /configured in the local environment/,
+    );
+  });
+
+  it("throws in production when keys are missing", () => {
+    process.env.NODE_ENV = "production";
+    delete process.env.VAPID_PUBLIC_KEY;
+    delete process.env.VAPID_PRIVATE_KEY;
+
+    assert.throws(
+      () => getVapidConfig(),
+      /VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY must be configured/,
     );
   });
 });

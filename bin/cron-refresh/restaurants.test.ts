@@ -9,9 +9,11 @@ import {
   parseEaterArticle,
   parseMichelinSelectionPage,
 } from "../cron-refresh.js";
+import { setLookupOverrideForTests } from "./http.js";
 import { readFixture } from "./test-helpers.js";
 
 const eaterOpeningsHtml = readFixture("eater-openings-april-2026.html");
+const publicLookup = async () => [{ address: "93.184.216.34", family: 4 }];
 
 describe("extractRestaurants()", () => {
   it("extracts a restaurant matching the opens? pattern", () => {
@@ -148,12 +150,14 @@ describe("fetchEaterSF()", () => {
     }) as typeof fetch;
 
     try {
+      setLookupOverrideForTests(publicLookup);
       const results = await fetchEaterSF([]);
       assert.deepEqual(
         results.map((result) => result.name),
         ["Alpha Cafe", "Beta Bistro"],
       );
     } finally {
+      setLookupOverrideForTests(null);
       globalThis.fetch = originalFetch;
     }
   });
@@ -287,11 +291,13 @@ describe("fetchMichelinCaliforniaSelection()", () => {
     }) as typeof fetch;
 
     try {
+      setLookupOverrideForTests(publicLookup);
       const results = await fetchMichelinCaliforniaSelection(
         new Date(Date.UTC(2024, 7, 10)),
       );
       assert.deepEqual(results.map((result) => result.name), ["Hilda and Jesse"]);
     } finally {
+      setLookupOverrideForTests(null);
       globalThis.fetch = originalFetch;
     }
   });

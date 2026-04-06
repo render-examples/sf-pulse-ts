@@ -6,6 +6,9 @@ import {
   findMenuUrls,
   parseDietaryFlags,
 } from "../cron-refresh.js";
+import { setLookupOverrideForTests } from "./http.js";
+
+const publicLookup = async () => [{ address: "93.184.216.34", family: 4 }];
 
 describe("extractUrls()", () => {
   it("extracts http and https URLs from href attributes", () => {
@@ -120,6 +123,7 @@ describe("findMenuUrls()", () => {
     }) as typeof fetch;
 
     try {
+      setLookupOverrideForTests(publicLookup);
       const urls = await findMenuUrls("Test Bistro");
       assert.deepEqual(urls, [
         "https://example.com/menu",
@@ -127,6 +131,7 @@ describe("findMenuUrls()", () => {
         "https://example.com/location",
       ]);
     } finally {
+      setLookupOverrideForTests(null);
       globalThis.fetch = originalFetch;
     }
   });
@@ -174,12 +179,14 @@ describe("discoverMenu()", () => {
     }) as typeof fetch;
 
     try {
+      setLookupOverrideForTests(publicLookup);
       const result = await discoverMenu("Test Bistro");
       assert.equal(result.menuUrl, "https://example.com/menu");
       assert.equal(result.dietaryFlags.gluten_free.available, true);
       assert.equal(result.dietaryFlags.gluten_free.confidence, "inferred");
       assert.equal(result.dietaryFlags.vegan.available, true);
     } finally {
+      setLookupOverrideForTests(null);
       globalThis.fetch = originalFetch;
     }
   });
@@ -209,12 +216,14 @@ describe("discoverMenu()", () => {
     }) as typeof fetch;
 
     try {
+      setLookupOverrideForTests(publicLookup);
       const result = await discoverMenu("Test Bistro");
       assert.equal(result.menuUrl, "https://example.com/location");
       assert.equal(result.dietaryFlags.gluten_free.available, false);
       assert.equal(result.dietaryFlags.vegan.available, false);
       assert.equal(result.dietaryFlags.vegetarian.available, false);
     } finally {
+      setLookupOverrideForTests(null);
       globalThis.fetch = originalFetch;
     }
   });

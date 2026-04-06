@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Pool } from "pg";
 import * as storage from "../storage.js";
 import {
+  getVapidPublicKey,
   parsePushSubscriptionBody,
   parsePushUnsubscribeBody,
 } from "../security.js";
@@ -10,10 +11,7 @@ export function pushRoutes(pool?: Pool): Router {
   const router = Router();
 
   router.get("/vapid-key", (_req, res) => {
-    const key =
-      process.env.VAPID_PUBLIC_KEY ||
-      "BBkwZRCOJzKrYlx_-1XEbGaNmgofTxAaaIRWZzEx8MrA-C52lj6uP4Qv3Eheq3l_2GWXDNZltVpprFNG1N1QAG4";
-    res.json({ key });
+    res.json({ key: getVapidPublicKey() });
   });
 
   router.post("/subscribe", async (req, res) => {

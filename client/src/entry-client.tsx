@@ -34,7 +34,7 @@ const queryClient = new QueryClient({
 if (initial) {
   queryClient.setQueryData(["/api/restaurants"], initial.restaurants);
   queryClient.setQueryData(["/api/events"], initial.events);
-  queryClient.setQueryData(["/api/last-updated"], { lastUpdated: initial.lastUpdated });
+  queryClient.setQueryData(["/api/updates/last-updated"], { lastUpdated: initial.lastUpdated });
 }
 
 hydrateRoot(

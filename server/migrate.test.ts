@@ -77,6 +77,7 @@ describe("migrate()", () => {
       "0003_escape_event_titles",
       "0004_restaurant_highlights_and_cron_runs",
       "0005_backfill_sf_michelin_stars",
+      "0006_add_hot_path_indexes",
     ]);
   });
 
@@ -86,7 +87,7 @@ describe("migrate()", () => {
     await migrate(pool, MIGRATIONS_DIR);
 
     const { rows } = await pool.query("SELECT COUNT(*)::int AS n FROM schema_migrations");
-    assert.equal((rows[0] as { n: number }).n, 5);
+    assert.equal((rows[0] as { n: number }).n, 6);
   });
 
   it("seeds the current San Francisco Michelin-starred restaurants", async () => {
@@ -190,5 +191,42 @@ describe("migrate()", () => {
       opened_date: "3 stars · June 27, 2025",
       source_url: "https://guide.michelin.com/us/en/california/san-francisco/restaurant/benu",
     });
+  });
+
+  it("0006 applies cleanly on top of populated data without changing rows", async () => {
+    const pool = freshPool();
+    const baseDir = await migrationDirWith([
+      "0001_initial.sql",
+      "0002_menu_dietary.sql",
+      "0003_escape_event_titles.sql",
+      "0004_restaurant_highlights_and_cron_runs.sql",
+      "0005_backfill_sf_michelin_stars.sql",
+    ]);
+    const indexDir = await migrationDirWith([
+      "0006_add_hot_path_indexes.sql",
+    ]);
+
+    await migrate(pool, baseDir);
+    const {
+      rows: [restaurantCountBefore],
+    } = await pool.query<{ n: number }>(
+      "SELECT COUNT(*)::int AS n FROM restaurants",
+    );
+    await migrate(pool, indexDir);
+    await migrate(pool, indexDir);
+
+    const {
+      rows: [restaurantCountAfter],
+    } = await pool.query<{ n: number }>(
+      "SELECT COUNT(*)::int AS n FROM restaurants",
+    );
+    const { rows } = await pool.query<{ version: string }>(
+      `SELECT version
+       FROM schema_migrations
+       WHERE version = '0006_add_hot_path_indexes'`,
+    );
+
+    assert.equal(restaurantCountBefore?.n, restaurantCountAfter?.n);
+    assert.deepEqual(rows, [{ version: "0006_add_hot_path_indexes" }]);
   });
 });

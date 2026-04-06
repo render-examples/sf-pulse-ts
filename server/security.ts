@@ -86,6 +86,37 @@ export function renderInitialDataScript(data: InitialData): string {
   return `<script>window.__INITIAL_DATA__ = ${serializeForInlineScript(data)};</script>`;
 }
 
+export interface VapidConfig {
+  publicKey: string;
+  privateKey: string;
+  subject: string;
+}
+
+export function getVapidConfig(): VapidConfig {
+  const publicKey = process.env.VAPID_PUBLIC_KEY?.trim();
+  const privateKey = process.env.VAPID_PRIVATE_KEY?.trim();
+
+  if (publicKey && privateKey) {
+    return {
+      publicKey,
+      privateKey,
+      subject: "mailto:sf-pulse@example.com",
+    };
+  }
+
+  const error = new Error(
+    process.env.NODE_ENV === "production"
+      ? "VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY must be configured"
+      : "VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY must be configured in the local environment (for example via .env.local)",
+  );
+  Object.assign(error, { status: 503 });
+  throw error;
+}
+
+export function getVapidPublicKey(): string {
+  return getVapidConfig().publicKey;
+}
+
 export function secretsEqual(expected: string, actual: unknown): boolean {
   if (typeof actual !== "string") return false;
 

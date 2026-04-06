@@ -36,6 +36,9 @@ const event = {
 describe("applyDiscoveredItems()", () => {
   let pool: PgPool;
   const originalSendNotification = webpush.sendNotification;
+  const originalSetVapidDetails = webpush.setVapidDetails;
+  const originalPublicKey = process.env.VAPID_PUBLIC_KEY;
+  const originalPrivateKey = process.env.VAPID_PRIVATE_KEY;
 
   async function clearSubscriptions(): Promise<void> {
     const subs = await getSubscriptions(pool);
@@ -43,6 +46,9 @@ describe("applyDiscoveredItems()", () => {
   }
 
   before(async () => {
+    process.env.VAPID_PUBLIC_KEY = "test-vapid-public-key";
+    process.env.VAPID_PRIVATE_KEY = "test-vapid-private-key";
+    webpush.setVapidDetails = (() => undefined) as typeof webpush.setVapidDetails;
     pool = await createTestDb();
     await clearRestaurants(pool);
     await clearEvents(pool);
@@ -51,6 +57,17 @@ describe("applyDiscoveredItems()", () => {
 
   after(() => {
     webpush.sendNotification = originalSendNotification;
+    webpush.setVapidDetails = originalSetVapidDetails;
+    if (originalPublicKey === undefined) {
+      delete process.env.VAPID_PUBLIC_KEY;
+    } else {
+      process.env.VAPID_PUBLIC_KEY = originalPublicKey;
+    }
+    if (originalPrivateKey === undefined) {
+      delete process.env.VAPID_PRIVATE_KEY;
+    } else {
+      process.env.VAPID_PRIVATE_KEY = originalPrivateKey;
+    }
   });
 
   it("inserts restaurants and events, returns added names", async () => {

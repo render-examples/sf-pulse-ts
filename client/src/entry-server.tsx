@@ -23,7 +23,7 @@ export function renderApp(data: InitialData): string {
   // Pre-populate the cache so Home renders with real data immediately
   queryClient.setQueryData(["/api/restaurants"], data.restaurants);
   queryClient.setQueryData(["/api/events"], data.events);
-  queryClient.setQueryData(["/api/last-updated"], { lastUpdated: data.lastUpdated });
+  queryClient.setQueryData(["/api/updates/last-updated"], { lastUpdated: data.lastUpdated });
 
   const html = renderToString(
     <QueryClientProvider client={queryClient}>

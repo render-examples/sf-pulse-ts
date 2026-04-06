@@ -4,3 +4,5 @@
 - [x] make sure events are always sorted by date. When ingesting events assume they are this year, or next year if the event is listed in a month that has already happened this year and no other year is specified.
 - [x] search for Michelin star releases in San Francisco every 3 days. When this list is introduced add the restaurants to the table, but in the opened column list the count of stars and the date they received them. Use a SVG of the Michelin star.
 - [x] are push notifications actually sent? This should probably be a part of cron or a trigger function in PG?
+- [ ] clean up logging to use console.info/warn/danger instead of just console.log. Consider console.log for debugging only. Write a logging skill that codifies how we've been logging.
+- [ ] write a readme that lets the user know how to configure a dev env
