@@ -18,7 +18,7 @@ async function externals(): Promise<string[]> {
 async function buildAll() {
   await rm("dist", { recursive: true, force: true });
 
-  console.log("building client...");
+  console.info("building client...");
   await viteBuild();
 
   const ext = await externals();
@@ -30,7 +30,7 @@ async function buildAll() {
   };
 
   for (const [outfile, entry] of Object.entries(serverEntries)) {
-    console.log(`building ${entry}...`);
+    console.info(`building ${entry}...`);
     await esbuild({
       entryPoints: [entry],
       platform: "node",
@@ -47,7 +47,7 @@ async function buildAll() {
   // SSR server bundle: React + react-dom/server bundled in so the Node process
   // must be built by Vite as well so CSS module class names stay aligned with
   // the client bundle referenced from dist/public/index.html.
-  console.log("building SSR server bundle...");
+  console.info("building SSR server bundle...");
   await viteBuild({
     ...viteConfig,
     build: {
@@ -64,10 +64,10 @@ async function buildAll() {
     },
   });
 
-  console.log("copying migrations...");
+  console.info("copying migrations...");
   await cp("migrations", "dist/migrations", { recursive: true });
 
-  console.log("build complete → dist/");
+  console.info("build complete → dist/");
 }
 
 buildAll().catch((err) => {

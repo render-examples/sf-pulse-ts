@@ -3,7 +3,7 @@ import { pool } from "../server/db.js";
 
 migrate(pool)
   .then(() => {
-    console.log("[migrate] done");
+    console.info("[migrate] done");
     return pool.end();
   })
   .catch((err) => {

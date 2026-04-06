@@ -67,7 +67,7 @@ export async function migrate(pool?: Pool, migrationsDir?: string): Promise<void
         [version]
       );
       await client.query("COMMIT");
-      console.log(`[migrate] applied ${file}`);
+      console.info(`[migrate] applied ${file}`);
     } catch (err) {
       await client.query("ROLLBACK");
       throw new Error(`[migrate] failed on ${file}: ${(err as Error).message}`);

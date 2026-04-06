@@ -18,7 +18,7 @@ async function run() {
      ORDER BY id`
   );
 
-  console.log(`[seed-menus] ${rows.length} restaurants to check`);
+  console.info(`[seed-menus] ${rows.length} restaurants to check`);
 
   for (const r of rows) {
     process.stdout.write(`  ${r.name} … `);
@@ -36,16 +36,16 @@ async function run() {
       if (dietaryFlags?.gluten_free.available) flags.push(`GF(${dietaryFlags.gluten_free.confidence[0]})`);
       if (dietaryFlags?.vegan.available)       flags.push(`VG(${dietaryFlags.vegan.confidence[0]})`);
       if (dietaryFlags?.vegetarian.available)  flags.push(`V(${dietaryFlags.vegetarian.confidence[0]})`);
-      console.log(menuUrl ? `✓ ${menuUrl.slice(0, 60)}${flags.length ? " [" + flags.join(" ") + "]" : ""}` : "no menu found");
+      console.info(menuUrl ? `✓ ${menuUrl.slice(0, 60)}${flags.length ? " [" + flags.join(" ") + "]" : ""}` : "no menu found");
     } catch (err) {
-      console.log(`ERROR: ${err}`);
+      console.error(`[seed-menus] menu discovery failed for ${r.name}:`, err);
     }
     // Small delay between searches to avoid rate-limiting
     await new Promise((res) => setTimeout(res, 1500));
   }
 
   await pool.end();
-  console.log("[seed-menus] done");
+  console.info("[seed-menus] done");
 }
 
 run().catch((err) => { console.error(err); process.exit(1); });

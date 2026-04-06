@@ -65,7 +65,7 @@ export function isCronJobDue(
 }
 
 export async function main(): Promise<void> {
-  console.log(`[cron] SF Pulse refresh — ${new Date().toISOString()}`);
+  console.info(`[cron] SF Pulse refresh — ${new Date().toISOString()}`);
 
   const lists = await currentLists();
   const monthYear = new Date().toLocaleString("en-US", {
@@ -73,7 +73,7 @@ export async function main(): Promise<void> {
     year: "numeric",
   });
 
-  console.log("[cron] fetching restaurant sources...");
+  console.info("[cron] fetching restaurant sources...");
   const [eaterResult, sfistResult, ddgRestaurantsResult] =
     await Promise.allSettled([
       fetchEaterSF(lists.restaurantNames),
@@ -99,7 +99,7 @@ export async function main(): Promise<void> {
 
   const michelinRun = await getCronRun(MICHELIN_CRON_JOB);
   if (isCronJobDue(michelinRun?.last_ran_at, THREE_DAYS_MS)) {
-    console.log("[cron] checking Michelin California selection...");
+    console.info("[cron] checking Michelin California selection...");
     try {
       const michelinItems = await fetchMichelinCaliforniaSelection();
       for (const restaurant of michelinItems) {
@@ -110,13 +110,13 @@ export async function main(): Promise<void> {
         newRestaurants.push(restaurant);
       }
       await markCronRun(MICHELIN_CRON_JOB);
-      console.log(`[cron] Michelin candidates: ${michelinItems.length}`);
+      console.info(`[cron] Michelin candidates: ${michelinItems.length}`);
     } catch (error) {
       console.error("[cron] Michelin selection check failed:", error);
     }
   }
 
-  console.log("[cron] fetching event sources...");
+  console.info("[cron] fetching event sources...");
   const [funcheapResult, famsfResult, calAcademyResult, ddgEventsResult] =
     await Promise.allSettled([
       fetchFuncheap(lists.eventTitles),
@@ -154,7 +154,7 @@ export async function main(): Promise<void> {
     });
   }
 
-  console.log(
+  console.info(
     `[cron] candidates: ${newRestaurants.length} restaurants, ${newEvents.length} events`,
   );
 
@@ -163,19 +163,19 @@ export async function main(): Promise<void> {
       restaurants: newRestaurants,
       events: newEvents,
     });
-    console.log("[cron] refresh result:", result);
+    console.info("[cron] refresh result:", result);
   } else {
-    console.log("[cron] nothing new");
+    console.info("[cron] nothing new");
   }
 
-  console.log("[cron] starting menu discovery...");
+  console.info("[cron] starting menu discovery...");
   try {
     const restaurants = await getRestaurantsNeedingMenuCheck();
-    console.log(`[cron] ${restaurants.length} restaurants need menu check`);
+    console.info(`[cron] ${restaurants.length} restaurants need menu check`);
 
     for (const restaurant of restaurants) {
       try {
-        console.log(`[cron] checking menu for: ${restaurant.name}`);
+        console.info(`[cron] checking menu for: ${restaurant.name}`);
         const { menuUrl, dietaryFlags } = await discoverMenu(restaurant.name);
         await updateRestaurantMenu(restaurant.id, menuUrl, dietaryFlags);
         console.info(`[cron] found menu for ${restaurant.name}`);

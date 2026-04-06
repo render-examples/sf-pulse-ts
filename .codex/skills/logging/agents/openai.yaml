@@ -1,0 +1,4 @@
+interface:
+  display_name: "Logging"
+  short_description: "Keep console levels intentional"
+  default_prompt: "Use $logging to clean up console output in this repo so info, warn, and error reflect operational severity and console.log stays debug-only."
