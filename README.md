@@ -116,16 +116,16 @@ npx web-push generate-vapid-keys
 
 ## Scripts
 
-- `npm run dev`: start the app in development mode with Vite middleware and `.env.local`
+- `npm run dev`: start the app in development mode with Astro and `.env.local`
 - `npm run migrate`: apply SQL migrations from `migrations/`
-- `npm run build`: build the client, SSR bundle, server bundle, cron bundle, and copy migrations into `dist/`
-- `npm start`: start the production server from `dist/index.cjs`
+- `npm run build`: build the Astro app, server bundle, cron bundle, and copy migrations into `dist/`
+- `npm start`: start the production server from `dist/server/entry.mjs`
 - `npm run typecheck`: run TypeScript checks for app and test configs
 - `npm test`: run the Node test suite
 
 ## Development notes
 
-- There is a single Node process in local dev. You do not run Vite separately.
+- There is a single Node process in local dev. You do not run a separate frontend dev server.
 - Tests mostly use `pg-mem`, so `npm test` does not need a real `DATABASE_URL`.
 - The repo carries local patches for `pg-mem` and `pgsql-ast-parser`. If SQL-related tests start failing unexpectedly, check `patches/` and `docs/pg-mem-upstreaming.md`.
 - Protected delete routes expect `x-cron-secret` to match `CRON_SECRET`.
@@ -146,8 +146,8 @@ npx web-push generate-vapid-keys
 ## Production
 
 - Render deployment is defined in `render.yaml`.
-- The Render web service builds the app, runs migrations before deploy, and starts `dist/index.cjs`.
+- The Render web service builds the app, runs migrations before deploy, and starts `dist/server/entry.mjs`.
 - A separate Render cron service runs the refresh job on a schedule.
-- `Dockerfile` provides a production image based on `node:20-slim`.
+- `Dockerfile` provides a production image based on `node:22-slim`.
 
 For production, supply environment variables through the host platform. Do not rely on `.env.local` outside local development.

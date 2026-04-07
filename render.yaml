@@ -17,7 +17,7 @@ services:
     plan: starter
     buildCommand: npm ci --include=dev && npm run build
     preDeployCommand: node dist/bin/migrate.cjs
-    startCommand: node dist/index.cjs
+    startCommand: node dist/server/entry.mjs
     healthCheckPath: /api/updates/last-updated
     envVars:
       - key: NODE_ENV

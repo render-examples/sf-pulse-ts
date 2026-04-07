@@ -1,4 +1,4 @@
-FROM node:20-slim
+FROM node:22-slim
 
 WORKDIR /app
 
@@ -12,4 +12,4 @@ ENV NODE_ENV=production
 ENV PORT=10000
 EXPOSE 10000
 
-CMD ["node", "dist/index.cjs"]
+CMD ["node", "dist/server/entry.mjs"]
