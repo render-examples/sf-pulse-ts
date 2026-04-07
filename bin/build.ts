@@ -1,11 +1,9 @@
 import { build as esbuild } from "esbuild";
-import { build as viteBuild } from "vite";
-import { rm, readFile, cp } from "fs/promises";
-import path from "path";
-import viteConfig from "../vite.config";
+import { cp, readFile } from "fs/promises";
+import { execFileSync } from "node:child_process";
 
 // Deps bundled into server binaries (everything else is external)
-const bundled = new Set(["express", "pg", "web-push", "zod"]);
+const bundled = new Set(["pg", "web-push", "zod"]);
 
 async function externals(): Promise<string[]> {
   const pkg = JSON.parse(await readFile("package.json", "utf-8"));
@@ -16,15 +14,18 @@ async function externals(): Promise<string[]> {
 }
 
 async function buildAll() {
-  await rm("dist", { recursive: true, force: true });
-
-  console.info("building client...");
-  await viteBuild();
+  console.info("building Astro site...");
+  execFileSync("node", ["--env-file-if-exists=.env.local", "./node_modules/astro/bin/astro.mjs", "build"], {
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      ASTRO_TELEMETRY_DISABLED: "1",
+    },
+  });
 
   const ext = await externals();
 
   const serverEntries: Record<string, string> = {
-    "dist/index":       "server/index.ts",
     "dist/bin/migrate": "bin/migrate.ts",
     "dist/bin/cron":    "bin/cron-refresh.ts",
   };
@@ -43,26 +44,6 @@ async function buildAll() {
       define: { "import.meta.dirname": "__dirname" },
     });
   }
-
-  // SSR server bundle: React + react-dom/server bundled in so the Node process
-  // must be built by Vite as well so CSS module class names stay aligned with
-  // the client bundle referenced from dist/public/index.html.
-  console.info("building SSR server bundle...");
-  await viteBuild({
-    ...viteConfig,
-    build: {
-      ...viteConfig.build,
-      ssr: path.resolve(import.meta.dirname, "..", "client/src/entry-server.tsx"),
-      outDir: path.resolve(import.meta.dirname, "..", "dist/public"),
-      emptyOutDir: false,
-      rollupOptions: {
-        output: {
-          entryFileNames: "ssr-server.cjs",
-          format: "cjs",
-        },
-      },
-    },
-  });
 
   console.info("copying migrations...");
   await cp("migrations", "dist/migrations", { recursive: true });

@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "type": "module",
   "license": "MIT",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "prettier": {
     "semi": false,
     "trailingComma": "all",
@@ -10,39 +13,32 @@
   },
   "scripts": {
     "postinstall": "node --input-type=commonjs -e \"if (process.env.NODE_ENV !== 'production') require('child_process').execSync('patch-package', {stdio: 'inherit'})\"",
-    "dev": "NODE_ENV=development tsx watch --include server --include vite.config.ts --include .env.local --env-file-if-exists=.env.local server/index.ts",
+    "dev": "ASTRO_TELEMETRY_DISABLED=1 NODE_ENV=development node --env-file-if-exists=.env.local ./node_modules/astro/bin/astro.mjs dev --host 0.0.0.0 --port 5000",
     "build": "tsx bin/build.ts",
     "migrate": "node --env-file-if-exists=.env.local --import tsx bin/migrate.ts",
-    "start": "NODE_ENV=production node dist/index.cjs",
-    "typecheck": "tsc --project tsconfig.json --noEmit && tsc --project tsconfig.test.json --noEmit",
-    "test": "SF_PULSE_TEST_TRANSPORT=in-process HOST=127.0.0.1 NODE_ENV=test node --import tsx/esm --test $(find server bin client/src/lib -name '*.test.ts' | sort | tr '\\n' ' ')"
+    "start": "NODE_ENV=production node dist/server/entry.mjs",
+    "typecheck": "ASTRO_TELEMETRY_DISABLED=1 node --env-file-if-exists=.env.local ./node_modules/astro/bin/astro.mjs check && tsc --project tsconfig.test.json --noEmit",
+    "test": "SF_PULSE_TEST_TRANSPORT=in-process HOST=127.0.0.1 NODE_ENV=test node --import tsx/esm --test $(find server bin client/src/lib src -name '*.test.ts' | sort | tr '\\n' ' ')"
   },
   "dependencies": {
-    "@tanstack/react-query": "^5.60.5",
-    "express": "^5.0.1",
+    "@astrojs/node": "^10.0.4",
+    "astro": "^6.1.4",
     "ioredis": "^5.10.1",
     "pg": "^8.13.1",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
     "web-push": "^3.6.7",
-    "wouter": "^3.3.5",
     "zod": "^3.24.2"
   },
   "devDependencies": {
-    "@types/express": "^5.0.0",
+    "@astrojs/check": "^0.9.8",
     "@types/node": "20.19.27",
     "@types/pg": "^8.11.10",
-    "@types/react": "^18.3.11",
-    "@types/react-dom": "^18.3.1",
     "@types/supertest": "^7.2.0",
     "@types/web-push": "^3.6.4",
-    "@vitejs/plugin-react": "^4.7.0",
     "esbuild": "^0.25.0",
     "patch-package": "^8.0.1",
     "pg-mem": "^3.0.14",
     "supertest": "^7.2.2",
     "tsx": "^4.20.5",
-    "typescript": "5.6.3",
-    "vite": "^7.3.0"
+    "typescript": "5.6.3"
   }
 }

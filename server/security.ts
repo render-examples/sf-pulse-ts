@@ -1,6 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
-import type { InitialData } from "../client/src/types";
 
 const TRUSTED_PUSH_HOSTS = new Set([
   "fcm.googleapis.com",
@@ -80,10 +79,6 @@ export function serializeForInlineScript(value: unknown): string {
     .replace(/</g, "\\u003C")
     .replace(/\u2028/g, "\\u2028")
     .replace(/\u2029/g, "\\u2029");
-}
-
-export function renderInitialDataScript(data: InitialData): string {
-  return `<script>window.__INITIAL_DATA__ = ${serializeForInlineScript(data)};</script>`;
 }
 
 export interface VapidConfig {

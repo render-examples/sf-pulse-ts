@@ -5,7 +5,6 @@ import {
   getVapidConfig,
   getVapidPublicKey,
   isTrustedPushEndpoint,
-  renderInitialDataScript,
   serializeForInlineScript,
 } from "./security.js";
 
@@ -24,20 +23,6 @@ describe("serializeForInlineScript()", () => {
 
     assert.ok(serialized.includes("\\u2028"));
     assert.ok(serialized.includes("\\u2029"));
-  });
-});
-
-describe("renderInitialDataScript()", () => {
-  it("wraps sanitized JSON in a script tag", () => {
-    const script = renderInitialDataScript({
-      restaurants: [],
-      events: [],
-      lastUpdated: "</script><script>alert(1)</script>",
-    });
-
-    assert.ok(script.startsWith("<script>window.__INITIAL_DATA__ = "));
-    assert.ok(script.endsWith(";</script>"));
-    assert.ok(!script.includes("</script><script>alert(1)</script>"));
   });
 });
 

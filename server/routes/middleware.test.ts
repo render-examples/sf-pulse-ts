@@ -1,76 +1,36 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import type { Request, Response, NextFunction } from "express";
 import { requireCronSecret } from "./middleware.js";
-
-function makeReq(header?: string | string[]): Request {
-  return { headers: { "x-cron-secret": header } } as unknown as Request;
-}
-
-function makeRes(): { statusCode: number | undefined; body: unknown; status: (n: number) => { json: (b: unknown) => void }; } {
-  const res = {
-    statusCode: undefined as number | undefined,
-    body: undefined as unknown,
-    status(n: number) {
-      res.statusCode = n;
-      return { json: (b: unknown) => { res.body = b; } };
-    },
-  };
-  return res;
-}
 
 describe("requireCronSecret middleware", () => {
   afterEach(() => {
     delete process.env.CRON_SECRET;
   });
 
-  it("returns 503 when CRON_SECRET is not set", () => {
+  it("returns 503 when CRON_SECRET is not set", async () => {
     delete process.env.CRON_SECRET;
-    let called = false;
-    const next: NextFunction = () => { called = true; };
-    const res = makeRes();
-    requireCronSecret(makeReq(), res as unknown as Response, next);
-    assert.ok(!called);
-    assert.equal(res.statusCode, 503);
+    const response = requireCronSecret(null);
+    assert.equal(response?.status, 503);
+    assert.deepEqual(await response?.json(), { error: "CRON_SECRET is not configured" });
   });
 
   it("calls next() when header matches secret", () => {
     process.env.CRON_SECRET = "s3cr3t";
-    let called = false;
-    const next: NextFunction = () => { called = true; };
-    const res = makeRes();
-    requireCronSecret(makeReq("s3cr3t"), res as unknown as Response, next);
-    assert.ok(called);
-    assert.equal(res.statusCode, undefined);
+    assert.equal(requireCronSecret("s3cr3t"), null);
   });
 
   it("returns 401 when secret is set and header is missing", () => {
     process.env.CRON_SECRET = "s3cr3t";
-    let called = false;
-    const next: NextFunction = () => { called = true; };
-    const res = makeRes();
-    requireCronSecret(makeReq(undefined), res as unknown as Response, next);
-    assert.ok(!called);
-    assert.equal(res.statusCode, 401);
+    assert.equal(requireCronSecret(undefined)?.status, 401);
   });
 
   it("returns 401 when secret is set and header is wrong", () => {
     process.env.CRON_SECRET = "s3cr3t";
-    let called = false;
-    const next: NextFunction = () => { called = true; };
-    const res = makeRes();
-    requireCronSecret(makeReq("wrong"), res as unknown as Response, next);
-    assert.ok(!called);
-    assert.equal(res.statusCode, 401);
+    assert.equal(requireCronSecret("wrong")?.status, 401);
   });
 
   it("returns 401 when the header is provided multiple times", () => {
     process.env.CRON_SECRET = "s3cr3t";
-    let called = false;
-    const next: NextFunction = () => { called = true; };
-    const res = makeRes();
-    requireCronSecret(makeReq(["s3cr3t", "wrong"]), res as unknown as Response, next);
-    assert.ok(!called);
-    assert.equal(res.statusCode, 401);
+    assert.equal(requireCronSecret(["s3cr3t", "wrong"])?.status, 401);
   });
 });

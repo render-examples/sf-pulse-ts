@@ -1,5 +1,5 @@
 {
-  "include": ["client/src/**/*", "shared/**/*", "server/**/*", "bin/**/*"],
+  "include": ["client/src/lib/**/*", "shared/**/*", "server/**/*", "src/**/*", "bin/**/*", "astro.config.mjs"],
   "exclude": ["node_modules", "build", "dist", "**/*.test.ts", "server/test-helpers.ts", "server/fixtures"],
   "compilerOptions": {
     "incremental": true,
@@ -15,7 +15,7 @@
     "allowImportingTsExtensions": true,
     "moduleResolution": "bundler",
     "baseUrl": ".",
-    "types": ["node", "vite/client"],
+    "types": ["node"],
     "paths": {
       "@shared/*": ["./shared/*"]
     }

@@ -1,0 +1,351 @@
+---
+import "../styles/global.css";
+import "../styles/home.css";
+import scriptUrl from "../scripts/home.ts?url";
+import { serializeForInlineScript } from "../../server/security.js";
+import { getInitialData } from "../server/api/utils.js";
+import { buildTimeline } from "../../shared/timeline.ts";
+import type { DietaryFlags } from "../../shared/types.ts";
+
+const data = await getInitialData();
+const restaurantRows = buildTimeline(data.restaurants, (restaurant) => restaurant.opened_date);
+const eventRows = buildTimeline(data.events, (event) => event.date);
+const lastUpdated = data.lastUpdated
+  ? new Date(data.lastUpdated).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    })
+  : null;
+const pageData = serializeForInlineScript(data);
+
+const dietLabels: {
+  key: keyof DietaryFlags;
+  symbol: string;
+  label: string;
+  color: string;
+}[] = [
+  { key: "gluten_free", symbol: "GF", label: "Gluten-free", color: "#d4a017" },
+  { key: "vegan", symbol: "VG", label: "Vegan", color: "#4caf50" },
+  { key: "vegetarian", symbol: "V", label: "Vegetarian", color: "#66bb6a" },
+];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    <title>SF Pulse — New Restaurants & Mission Events</title>
+    <meta
+      name="description"
+      content="Track new San Francisco restaurant openings and upcoming Mission District events. Updated daily."
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#171614" />
+    <link rel="icon" type="image/png" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="alternate" type="application/rss+xml" title="SF Pulse" href="/api/rss.xml" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div class="page">
+      <header class="header">
+        <div class="headerInner">
+          <div class="logo">
+            <div class="logoMark">SF</div>
+            <div>
+              <div class="siteTitle">SF Pulse</div>
+              <div class="siteSubtitle">New restaurants &amp; Mission District events</div>
+            </div>
+          </div>
+          <div class="headerActions">
+            <button class="iconBtn" data-push-button hidden aria-label="Push notifications unavailable"></button>
+          </div>
+        </div>
+      </header>
+
+      <main class="main">
+        <nav class="tabs" aria-label="Content sections">
+          <a class="tab tabRestaurants" href="#restaurants">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"></path>
+              <path d="M7 2v20"></path>
+              <path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3zm0 0v7"></path>
+            </svg>
+            Restaurants
+          </a>
+          <a class="tab tabEvents" href="#events">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            Events
+          </a>
+        </nav>
+
+        <section class="section restaurantsSection" id="restaurants">
+          <div class="sectionHeader">
+            <div>
+              <h2 class="sectionTitle">New SF Restaurants</h2>
+              <p class="sectionMeta">
+                <span class="liveDot"></span>
+                Recent openings, upcoming spots, and Michelin stars —
+                <span data-count="restaurants">{data.restaurants.length}</span>
+                tracked
+              </p>
+            </div>
+            <input
+              type="search"
+              class="filter"
+              placeholder="Filter by name, area, cuisine…"
+              aria-label="Filter restaurants"
+              data-filter-input="restaurants"
+            />
+          </div>
+          <div class="tableCard">
+            <div class="timelineScroll" data-scroll-container="restaurants">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th class="colNeighborhood">Neighborhood</th>
+                    <th class="colCuisine">Cuisine</th>
+                    <th class="colDiet">Diet</th>
+                    <th>Opened</th>
+                  </tr>
+                </thead>
+                <tbody data-table-body="restaurants">
+                  {restaurantRows.map((row) =>
+                    row.kind === "today" ? (
+                      <tr class="todayRow" data-today-row="restaurants">
+                        <td colspan="5" class="todayCell">
+                          <span class="todayLabel">Today</span>
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr>
+                        <td>
+                          <div class="cellPrimary">
+                            {row.item.name}
+                            {
+                              row.item.menu_url && (
+                                <a
+                                  href={row.item.menu_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  class="menuLink"
+                                  title="View menu"
+                                >
+                                  <svg
+                                    viewBox="0 0 24 24"
+                                    aria-hidden="true"
+                                    style="width:12px;height:12px;display:inline;vertical-align:middle;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"
+                                  >
+                                    <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path>
+                                    <line x1="4" y1="22" x2="4" y2="15"></line>
+                                  </svg>
+                                  Menu
+                                </a>
+                              )
+                            }
+                          </div>
+                          {
+                            row.item.address && (
+                              <div class="cellSub" style="display:flex;align-items:center;gap:3px">
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  aria-hidden="true"
+                                  style="width:12px;height:12px;display:inline;vertical-align:middle;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"
+                                >
+                                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                                  <circle cx="12" cy="10" r="3"></circle>
+                                </svg>
+                                {row.item.address}
+                              </div>
+                            )
+                          }
+                          {
+                            row.item.source_url && (
+                              <a
+                                href={row.item.source_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="cellSource"
+                              >
+                                Source
+                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                                  <polyline points="15 3 21 3 21 9"></polyline>
+                                  <line x1="10" y1="14" x2="21" y2="3"></line>
+                                </svg>
+                              </a>
+                            )
+                          }
+                        </td>
+                        <td class="colNeighborhood"><span class="badge">{row.item.neighborhood}</span></td>
+                        <td class="colCuisine" style="color:var(--text-2)">{row.item.cuisine}</td>
+                        <td class="colDiet">
+                          {
+                            row.item.dietary_flags && (
+                              <span class="dietaryBadges">
+                                {dietLabels
+                                  .filter((diet) => row.item.dietary_flags?.[diet.key].available)
+                                  .map((diet) => {
+                                    const flag = row.item.dietary_flags?.[diet.key];
+                                    return (
+                                      <span
+                                        class:list={{
+                                          dietaryBadge: true,
+                                          dietaryInferred: flag?.confidence === "inferred",
+                                        }}
+                                        style={`border-color:${diet.color};color:${diet.color}`}
+                                        title={`${diet.label}${flag?.confidence === "inferred" ? " (likely)" : ""}`}
+                                      >
+                                        {diet.symbol}
+                                      </span>
+                                    );
+                                  })}
+                              </span>
+                            )
+                          }
+                        </td>
+                        <td>
+                          {
+                            row.item.highlight_kind === "michelin" ? (
+                              <span class="michelinOpened">
+                                <svg viewBox="0 0 24 24" aria-hidden="true" class="michelinIcon">
+                                  <path
+                                    d="M12 1.5l2.1 5.17 5.58-1.66-1.66 5.58L23.2 12l-5.17 2.1 1.66 5.58-5.58-1.66L12 23.2l-2.1-5.17-5.58 1.66 1.66-5.58L.8 12l5.17-2.1L4.31 4.32l5.58 1.66z"
+                                    fill="currentColor"
+                                  ></path>
+                                  <circle cx="12" cy="12" r="3.25" fill="var(--surface)"></circle>
+                                </svg>
+                                <span>{row.item.opened_date}</span>
+                              </span>
+                            ) : (
+                              <span style="color:var(--text-2);white-space:nowrap;font-size:12px">{row.item.opened_date}</span>
+                            )
+                          }
+                        </td>
+                      </tr>
+                    ),
+                  )}
+                </tbody>
+              </table>
+              <p class="empty" data-empty="restaurants" hidden>No restaurants match your filter.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="section eventsSection" id="events">
+          <div class="sectionHeader">
+            <div>
+              <h2 class="sectionTitle">Mission District Events</h2>
+              <p class="sectionMeta">
+                <span class="liveDot"></span>
+                Upcoming events in and around the Mission —
+                <span data-count="events">{data.events.length}</span>
+                listed
+              </p>
+            </div>
+            <input
+              type="search"
+              class="filter"
+              placeholder="Filter events…"
+              aria-label="Filter events"
+              data-filter-input="events"
+            />
+          </div>
+          <div class="tableCard">
+            <div class="timelineScroll" data-scroll-container="events">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Event</th>
+                    <th class="colNeighborhood">Location</th>
+                    <th>Date</th>
+                    <th class="colTime">Time</th>
+                  </tr>
+                </thead>
+                <tbody data-table-body="events">
+                  {eventRows.map((row) =>
+                    row.kind === "today" ? (
+                      <tr class="todayRow" data-today-row="events">
+                        <td colspan="4" class="todayCell">
+                          <span class="todayLabel">Today</span>
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr>
+                        <td>
+                          <div class="cellPrimary">{row.item.title}</div>
+                          {row.item.description && <div class="cellSub">{row.item.description}</div>}
+                          {
+                            row.item.source_url && (
+                              <a
+                                href={row.item.source_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="cellSource"
+                              >
+                                Source
+                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                                  <polyline points="15 3 21 3 21 9"></polyline>
+                                  <line x1="10" y1="14" x2="21" y2="3"></line>
+                                </svg>
+                              </a>
+                            )
+                          }
+                        </td>
+                        <td class="colNeighborhood" style="color:var(--text-2);font-size:12px">{row.item.location}</td>
+                        <td style="color:var(--text-2);white-space:nowrap;font-size:12px">{row.item.date}</td>
+                        <td class="colTime" style="color:var(--text-2);white-space:nowrap;font-size:12px">{row.item.time ?? "—"}</td>
+                      </tr>
+                    ),
+                  )}
+                </tbody>
+              </table>
+              <p class="empty" data-empty="events" hidden>No events match your filter.</p>
+            </div>
+          </div>
+        </section>
+
+        <footer class="footer">
+          <span>
+            Sources: Eater SF, The Infatuation, Eddie's List, SFGate, SF Chronicle, Funcheap,
+            Brick &amp; Mortar, Roxie Theater
+          </span>
+          <span class="footerClock" hidden={!lastUpdated}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            Last updated:
+            <span data-last-updated>{lastUpdated}</span>
+          </span>
+        </footer>
+
+        <div class="pushBanner" data-push-banner>
+          <strong>iOS Push Notifications:</strong>
+          Add to Home Screen (Share → Add to Home Screen) then tap the bell icon. Requires iOS 16.4+.
+        </div>
+      </main>
+
+      <div class="toastRegion" aria-live="polite" data-toast-region></div>
+    </div>
+
+    <script is:inline type="application/json" id="sf-pulse-data" set:html={pageData}></script>
+    <script is:inline type="module" src={scriptUrl}></script>
+  </body>
+</html>

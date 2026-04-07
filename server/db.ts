@@ -42,5 +42,3 @@ export async function queryOne<T = Record<string, unknown>>(
 export async function execute(sql: string, params?: unknown[]): Promise<void> {
   await pool.query(sql, params);
 }
-
-

@@ -1,9 +1,13 @@
-import type { Response } from "express";
 import Redis from "ioredis";
 
 const REALTIME_CHANNEL = "sf-pulse:realtime";
 
-const clients = new Set<Response>();
+interface SseClient {
+  write: (chunk: string) => void;
+  onClose: (callback: () => void) => void;
+}
+
+const clients = new Set<SseClient>();
 
 let publisher: Redis | null = null;
 let subscriber: Redis | null = null;
@@ -22,8 +26,8 @@ function logRedisError(role: "publisher" | "subscriber", error: unknown): void {
 
 function broadcastLocal(event: string, data: unknown): void {
   const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-  for (const res of clients) {
-    res.write(payload);
+  for (const client of clients) {
+    client.write(payload);
   }
 }
 
@@ -83,9 +87,9 @@ export async function initializeRealtime(): Promise<void> {
   return subscriberReady;
 }
 
-export function addClient(res: Response): void {
-  clients.add(res);
-  res.on("close", () => clients.delete(res));
+export function addClient(client: SseClient): void {
+  clients.add(client);
+  client.onClose(() => clients.delete(client));
 }
 
 export async function broadcast(event: string, data: unknown): Promise<void> {
@@ -100,4 +104,64 @@ export async function broadcast(event: string, data: unknown): Promise<void> {
   }
 
   await redis.publish(REALTIME_CHANNEL, JSON.stringify({ event, data }));
+}
+
+export function createSseResponse(signal: AbortSignal): Response {
+  const encoder = new TextEncoder();
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      let closed = false;
+
+      const cleanup = () => {
+        closed = true;
+        clearInterval(heartbeat);
+      };
+
+      const safeEnqueue = (chunk: Uint8Array) => {
+        if (closed) return;
+
+        try {
+          controller.enqueue(chunk);
+        } catch {
+          cleanup();
+        }
+      };
+
+      const heartbeat = setInterval(() => {
+        safeEnqueue(encoder.encode(": ping\n\n"));
+      }, 25_000);
+
+      const close = () => {
+        if (closed) return;
+        cleanup();
+
+        try {
+          controller.close();
+        } catch {
+          // Ignore repeated close attempts during abort races.
+        }
+      };
+
+      addClient({
+        write(chunk) {
+          safeEnqueue(encoder.encode(chunk));
+        },
+        onClose(callback) {
+          signal.addEventListener("abort", callback, { once: true });
+        },
+      });
+
+      signal.addEventListener("abort", close, { once: true });
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
 }

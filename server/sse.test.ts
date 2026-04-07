@@ -2,7 +2,7 @@
  * Tests for server/sse.ts
  *
  * Pure unit tests — no database needed.
- * Uses a minimal Response-like mock to verify broadcast behaviour.
+ * Uses a minimal client mock to verify broadcast behaviour.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -11,36 +11,35 @@ import assert from "node:assert/strict";
 // `clients` Set is empty. Node's ESM cache prevents re-importing, so we
 // test the module state across a single import instead.
 import { addClient, broadcast } from "./sse.js";
-import type { Response } from "express";
 
-function mockRes() {
+function mockClient() {
   const written: string[] = [];
   const listeners: Record<string, (() => void)[]> = {};
   return {
     written,
     write: (chunk: string) => { written.push(chunk); return true; },
+    onClose: (cb: () => void) => {
+      listeners.close ??= [];
+      listeners.close.push(cb);
+    },
     on: (event: string, cb: () => void) => {
       listeners[event] ??= [];
       listeners[event].push(cb);
     },
     emit: (event: string) => listeners[event]?.forEach((cb) => cb()),
-  } as unknown as Response & { written: string[]; emit: (e: string) => void };
+  };
 }
 
 describe("broadcast()", () => {
   it("sends SSE-formatted payload to registered clients", async () => {
-    const res = mockRes();
+    const res = mockClient();
     addClient(res);
     await broadcast("restaurants", { action: "refresh" });
-    assert.ok(
-      (res as ReturnType<typeof mockRes>).written.some((w) =>
-        w.includes("event: restaurants") && w.includes("refresh")
-      )
-    );
+    assert.ok(res.written.some((w) => w.includes("event: restaurants") && w.includes("refresh")));
   });
 
   it("removes client on close event", async () => {
-    const res = mockRes() as ReturnType<typeof mockRes>;
+    const res = mockClient();
     addClient(res);
     res.emit("close");
     // After close, broadcasting should not write to this client
@@ -50,7 +49,7 @@ describe("broadcast()", () => {
   });
 
   it("payload format is event:\\ndata:\\n\\n", async () => {
-    const res = mockRes() as ReturnType<typeof mockRes>;
+    const res = mockClient();
     addClient(res);
     await broadcast("test-event", { foo: "bar" });
     const last = res.written[res.written.length - 1];
