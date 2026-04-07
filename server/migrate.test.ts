@@ -87,6 +87,7 @@ describe("migrate()", () => {
       "0006_add_hot_path_indexes",
       "0007_structured_dates_and_event_dedupe",
       "0008_restaurant_identity_and_visibility",
+      "0009_backfill_structured_dates",
     ]);
   });
 
@@ -96,7 +97,7 @@ describe("migrate()", () => {
     await migrate(pool, MIGRATIONS_DIR);
 
     const { rows } = await pool.query("SELECT COUNT(*)::int AS n FROM schema_migrations");
-    assert.equal((rows[0] as { n: number }).n, 8);
+    assert.equal((rows[0] as { n: number }).n, 9);
   });
 
   it("seeds the current San Francisco Michelin-starred restaurants", async () => {
@@ -377,5 +378,89 @@ describe("migrate()", () => {
         ),
       /duplicate|unique/i,
     );
+  });
+
+  it("0009 backfills missing structured dates for legacy restaurants and events", async () => {
+    const pool = freshPool();
+    const baseDir = await migrationDirWith([
+      "0001_initial.sql",
+      "0002_menu_dietary.sql",
+      "0003_escape_event_titles.sql",
+      "0004_restaurant_highlights_and_cron_runs.sql",
+      "0005_backfill_sf_michelin_stars.sql",
+      "0006_add_hot_path_indexes.sql",
+      "0007_structured_dates_and_event_dedupe.sql",
+      "0008_restaurant_identity_and_visibility.sql",
+    ]);
+    const backfillDir = await migrationDirWith([
+      "0009_backfill_structured_dates.sql",
+    ]);
+
+    await migrate(pool, baseDir);
+    await migrate(pool, backfillDir);
+    await migrate(pool, backfillDir);
+
+    const {
+      rows: [restaurant],
+    } = await pool.query<{
+      opened_start_date: string | null;
+      opened_end_date: string | null;
+      opened_date_precision: string;
+      is_upcoming: boolean;
+    }>(
+      `SELECT opened_start_date::text AS opened_start_date,
+              opened_end_date::text AS opened_end_date,
+              opened_date_precision,
+              is_upcoming
+       FROM restaurants
+       WHERE name = 'Maillards'`,
+    );
+    assert.deepEqual(restaurant, {
+      opened_start_date: "2026-07-01",
+      opened_end_date: "2026-09-30",
+      opened_date_precision: "season",
+      is_upcoming: true,
+    });
+
+    const {
+      rows: [michelinRestaurant],
+    } = await pool.query<{
+      opened_start_date: string | null;
+      opened_end_date: string | null;
+      opened_date_precision: string;
+    }>(
+      `SELECT opened_start_date::text AS opened_start_date,
+              opened_end_date::text AS opened_end_date,
+              opened_date_precision
+       FROM restaurants
+       WHERE name = 'Benu'`,
+    );
+    assert.deepEqual(michelinRestaurant, {
+      opened_start_date: "2025-06-27",
+      opened_end_date: "2025-06-27",
+      opened_date_precision: "day",
+    });
+
+    const {
+      rows: [event],
+    } = await pool.query<{
+      start_date: string | null;
+      end_date: string | null;
+      date_precision: string;
+      is_upcoming: boolean;
+    }>(
+      `SELECT start_date::text AS start_date,
+              end_date::text AS end_date,
+              date_precision,
+              is_upcoming
+       FROM events
+       WHERE title = 'San Francisco Carnaval Festival &amp; Parade'`,
+    );
+    assert.deepEqual(event, {
+      start_date: "2026-05-23",
+      end_date: "2026-05-24",
+      date_precision: "day_range",
+      is_upcoming: true,
+    });
   });
 });

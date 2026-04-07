@@ -314,7 +314,7 @@ describe("storage — events", () => {
     assert.equal(found?.id, e.id);
   });
 
-  it("getVisibleEvents excludes past events but keeps upcoming ones", async () => {
+  it("getVisibleEvents keeps past and upcoming events in timeline order", async () => {
     await clearEvents(pool);
     await addEvent({ ...sample, title: "Past", date: formatDay(shiftUtcDays(reference, -10)) }, pool);
     await addEvent({ ...sample, title: "Today", date: formatDay(reference) }, pool);
@@ -323,7 +323,7 @@ describe("storage — events", () => {
     const rows = await getVisibleEvents(pool);
     assert.deepEqual(
       rows.map((row) => row.title),
-      ["Today", "Future"],
+      ["Past", "Today", "Future"],
     );
   });
 });

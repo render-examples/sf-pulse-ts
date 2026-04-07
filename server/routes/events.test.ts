@@ -69,14 +69,14 @@ describe("GET /api/events", () => {
     assert.ok(typeof e.id === "number");
   });
 
-  it("filters out past events", async () => {
+  it("includes past events in the response", async () => {
     await addEvent(
       { ...event, title: "Already Happened", date: formatDay(shiftUtcDays(reference, -10)) },
       pool,
     );
 
     const res = await agent.get("/api/events");
-    assert.ok(!res.body.some((row: { title: string }) => row.title === "Already Happened"));
+    assert.ok(res.body.some((row: { title: string }) => row.title === "Already Happened"));
   });
 });
 

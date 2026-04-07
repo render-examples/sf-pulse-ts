@@ -190,6 +190,29 @@ function formatIsoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+function isVisibleRestaurant(
+  restaurant: Restaurant,
+  reference = todayUTC(),
+): boolean {
+  if (restaurant.highlight_kind === "michelin") {
+    return true;
+  }
+
+  const normalized = normalizeRestaurantDates(restaurant);
+  if (normalized.is_upcoming) {
+    return true;
+  }
+
+  if (!normalized.opened_start_date) {
+    return false;
+  }
+
+  return (
+    new Date(`${normalized.opened_start_date}T00:00:00.000Z`).getTime() >=
+    subtractMonthsUTC(reference, 3).getTime()
+  );
+}
+
 // ── Restaurants ──────────────────────────────────────────────────────────────
 
 export function getRestaurants(pool?: Pool): Promise<Restaurant[]> {
@@ -206,11 +229,14 @@ export async function getVisibleRestaurants(pool?: Pool): Promise<Restaurant[]> 
      WHERE highlight_kind = 'michelin'
         OR is_upcoming = TRUE
         OR opened_start_date >= $1
+        OR opened_start_date IS NULL
      ORDER BY added_at DESC`,
     [cutoff],
     pool,
   );
-  return restaurants.map(normalizeRestaurantDates);
+  return restaurants
+    .map(normalizeRestaurantDates)
+    .filter((restaurant) => isVisibleRestaurant(restaurant));
 }
 
 export type NewRestaurant = Omit<
@@ -362,16 +388,7 @@ export async function getEvents(pool?: Pool): Promise<Event[]> {
 }
 
 export async function getVisibleEvents(pool?: Pool): Promise<Event[]> {
-  const cutoff = formatIsoDate(todayUTC());
-  const events = await q<Event>(
-    `SELECT *
-     FROM events
-     WHERE COALESCE(end_date, start_date) >= $1
-        OR (start_date IS NULL AND end_date IS NULL AND is_upcoming = TRUE)`,
-    [cutoff],
-    pool,
-  );
-  return events.map(normalizeEventDates).sort((a, b) => compareDateText(a.date, b.date));
+  return getEvents(pool);
 }
 
 export type NewEvent = Omit<
