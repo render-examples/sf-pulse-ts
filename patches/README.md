@@ -138,6 +138,48 @@ instead of forcing it through the read-only `buildSelect(...)` path. Nested
   [server/pg-mem.test.ts](/Users/joeybaker/Code/sf-pulse/server/pg-mem.test.ts)
   and [server/migrate.test.ts](/Users/joeybaker/Code/sf-pulse/server/migrate.test.ts)
 
+### Bug 5
+
+Standard PostgreSQL window expressions using `ROW_NUMBER() OVER (...)` were
+rejected outright with `"OVER" clause is not implemented in pg-mem yet`.
+That broke the restaurant-identity dedupe migration, which uses
+`ROW_NUMBER() OVER (PARTITION BY ... ORDER BY ...)` to keep the best row in
+each identity partition.
+
+### Fix
+
+Teach call-expression evaluation to support `ROW_NUMBER()` window functions
+with `PARTITION BY` and `ORDER BY` by enumerating the current selection,
+sorting each partition with PostgreSQL-style null and direction handling, and
+memoizing the computed row number per raw row for the statement execution.
+
+### Upstream target
+
+- Upstream repo: https://github.com/oguimbal/pg-mem
+- Source file from `index.js.map`: `src/parser/expression-builder.ts`
+- Regression tests in this repo:
+  [server/pg-mem.test.ts](/Users/joeybaker/Code/sf-pulse/server/pg-mem.test.ts)
+  and [server/migrate.test.ts](/Users/joeybaker/Code/sf-pulse/server/migrate.test.ts)
+
+### Bug 6
+
+Standard PostgreSQL text helpers `btrim(text)` and `nullif(text, text)` were
+missing from `pg_catalog`. The new restaurant-identity migration uses both, so
+`pg-mem` rejected valid PostgreSQL during migration execution.
+
+### Fix
+
+Register `btrim(text)` and `nullif(text, text)` in `pg_catalog` with standard
+PostgreSQL semantics for the text signatures used by this repo.
+
+### Upstream target
+
+- Upstream repo: https://github.com/oguimbal/pg-mem
+- Source file from `index.js.map`: `src/schema/pg-catalog/index.ts`
+- Regression tests in this repo:
+  [server/pg-mem.test.ts](/Users/joeybaker/Code/sf-pulse/server/pg-mem.test.ts)
+  and [server/migrate.test.ts](/Users/joeybaker/Code/sf-pulse/server/migrate.test.ts)
+
 ---
 
 ## pgsql-ast-parser+12.0.2.patch

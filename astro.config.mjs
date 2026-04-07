@@ -7,6 +7,9 @@ export default defineConfig({
     mode: "standalone",
   }),
   output: "static",
+  server: {
+    host: true,
+  },
   vite: {
     resolve: {
       alias: {

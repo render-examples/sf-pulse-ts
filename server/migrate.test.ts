@@ -86,6 +86,7 @@ describe("migrate()", () => {
       "0005_backfill_sf_michelin_stars",
       "0006_add_hot_path_indexes",
       "0007_structured_dates_and_event_dedupe",
+      "0008_restaurant_identity_and_visibility",
     ]);
   });
 
@@ -95,7 +96,7 @@ describe("migrate()", () => {
     await migrate(pool, MIGRATIONS_DIR);
 
     const { rows } = await pool.query("SELECT COUNT(*)::int AS n FROM schema_migrations");
-    assert.equal((rows[0] as { n: number }).n, 7);
+    assert.equal((rows[0] as { n: number }).n, 8);
   });
 
   it("seeds the current San Francisco Michelin-starred restaurants", async () => {
@@ -300,6 +301,79 @@ describe("migrate()", () => {
         pool.query(
           `INSERT INTO events (title, location, date, dedupe_key)
            VALUES ('San Francisco Carnaval Festival &amp; Parade', 'Mission District (Harrison St, 17 blocks)', 'May 23–24, 2026', 'san francisco carnaval festival &amp; parade|mission district (harrison st, 17 blocks)|may 23–24, 2026')`,
+        ),
+      /duplicate|unique/i,
+    );
+  });
+
+  it("0008 backfills restaurant identity, keeps the Michelin duplicate, and enforces uniqueness", async () => {
+    const pool = freshPool();
+    const baseDir = await migrationDirWith([
+      "0001_initial.sql",
+      "0002_menu_dietary.sql",
+      "0003_escape_event_titles.sql",
+      "0004_restaurant_highlights_and_cron_runs.sql",
+      "0005_backfill_sf_michelin_stars.sql",
+      "0006_add_hot_path_indexes.sql",
+      "0007_structured_dates_and_event_dedupe.sql",
+    ]);
+    const identityDir = await migrationDirWith([
+      "0008_restaurant_identity_and_visibility.sql",
+    ]);
+
+    await migrate(pool, baseDir);
+    await pool.query(
+      `INSERT INTO restaurants (name, neighborhood, cuisine, address, opened_date, source_url, highlight_kind)
+       VALUES
+         ('Twin Peaks', 'Mission', 'New opening', '1 Castro St', 'April 2026', NULL, 'opening'),
+         ('Twin Peaks', 'Mission', 'Michelin 1-star recognition', '1 Castro St', '1 star · June 27, 2025', 'https://example.com/michelin', 'michelin')`,
+    );
+
+    await migrate(pool, identityDir);
+    await migrate(pool, identityDir);
+
+    const { rows } = await pool.query<{
+      name: string;
+      cuisine: string;
+      identity_key: string;
+      highlight_kind: string;
+    }>(
+      `SELECT name, cuisine, identity_key, highlight_kind
+       FROM restaurants
+       WHERE name = 'Twin Peaks'`,
+    );
+
+    assert.equal(rows.length, 1);
+    assert.deepEqual(rows[0], {
+      name: "Twin Peaks",
+      cuisine: "Michelin 1-star recognition",
+      identity_key: "twin peaks|1 castro st",
+      highlight_kind: "michelin",
+    });
+
+    await assert.rejects(
+      () =>
+        pool.query(
+          `INSERT INTO restaurants (
+             name,
+             neighborhood,
+             cuisine,
+             address,
+             opened_date,
+             source_url,
+             highlight_kind,
+             identity_key
+           )
+           VALUES (
+             'Twin Peaks',
+             'Mission',
+             'Another copy',
+             '1 Castro St',
+             'April 2026',
+             NULL,
+             'opening',
+             'twin peaks|1 castro st'
+           )`,
         ),
       /duplicate|unique/i,
     );

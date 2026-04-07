@@ -12,6 +12,7 @@ import {
   getRestaurants,
   getVisibleRestaurants,
   addRestaurant,
+  getRestaurantByIdentityKey,
   getRestaurantByName,
   updateRestaurant,
   deleteRestaurant,
@@ -149,6 +150,13 @@ describe("storage — restaurants", () => {
     assert.equal(r?.name, sample.name);
   });
 
+  it("getRestaurantByIdentityKey matches normalized name plus address", async () => {
+    await clearRestaurants(pool);
+    await addRestaurant(sample, pool);
+    const r = await getRestaurantByIdentityKey("test bistro|1 mission st", pool);
+    assert.equal(r?.name, sample.name);
+  });
+
   it("updateRestaurant can promote a row to Michelin recognition", async () => {
     await clearRestaurants(pool);
     const r = await addRestaurant(sample, pool);
@@ -167,6 +175,22 @@ describe("storage — restaurants", () => {
     assert.equal(updated.opened_date, "1 star · August 6, 2024");
     assert.equal(updated.opened_start_date, "2024-08-06");
     assert.equal(updated.opened_end_date, "2024-08-06");
+  });
+
+  it("addRestaurant upserts on identity_key instead of inserting duplicates", async () => {
+    await clearRestaurants(pool);
+    await addRestaurant(sample, pool);
+    await addRestaurant(
+      {
+        ...sample,
+        cuisine: "Updated French",
+      },
+      pool,
+    );
+
+    const rows = await getRestaurants(pool);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].cuisine, "Updated French");
   });
 
   it("getVisibleRestaurants keeps recent openings, upcoming spots, and Michelin rows", async () => {

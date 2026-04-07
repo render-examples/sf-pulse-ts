@@ -82,4 +82,62 @@ describe("pg-mem patch regressions", () => {
     );
     assert.deepEqual(rows, [{ name: "Quince" }]);
   });
+
+  it("supports btrim(text)", async () => {
+    const pool = freshPool();
+    const { rows } = await pool.query<{ value: string }>(
+      "SELECT btrim('  Mission  ') AS value",
+    );
+
+    assert.deepEqual(rows, [{ value: "Mission" }]);
+  });
+
+  it("supports nullif(text, text)", async () => {
+    const pool = freshPool();
+    const { rows } = await pool.query<{ same: string | null; different: string }>(
+      "SELECT nullif('Mission', 'Mission') AS same, nullif('Mission', 'Sunset') AS different",
+    );
+
+    assert.deepEqual(rows, [{ same: null, different: "Mission" }]);
+  });
+
+  it("supports ROW_NUMBER() OVER with PARTITION BY and ORDER BY", async () => {
+    const pool = freshPool();
+    await pool.query(`
+      CREATE TABLE restaurants (
+        id INT NOT NULL,
+        name TEXT NOT NULL,
+        highlight_kind TEXT NOT NULL,
+        added_at TIMESTAMPTZ NOT NULL
+      )
+    `);
+    await pool.query(`
+      INSERT INTO restaurants (id, name, highlight_kind, added_at)
+      VALUES
+        (1, 'Benu', 'opening', '2026-04-01T00:00:00Z'),
+        (2, 'Benu', 'michelin', '2026-04-02T00:00:00Z'),
+        (3, 'Quince', 'opening', '2026-04-03T00:00:00Z')
+    `);
+
+    const { rows } = await pool.query<{ id: number; row_num: number }>(
+      `WITH ranked AS (
+         SELECT
+           id,
+           ROW_NUMBER() OVER (
+             PARTITION BY lower(name)
+             ORDER BY CASE WHEN highlight_kind = 'michelin' THEN 0 ELSE 1 END, added_at DESC, id DESC
+           ) AS row_num
+         FROM restaurants
+       )
+       SELECT id, row_num
+       FROM ranked
+       ORDER BY id`,
+    );
+
+    assert.deepEqual(rows, [
+      { id: 1, row_num: 2 },
+      { id: 2, row_num: 1 },
+      { id: 3, row_num: 1 },
+    ]);
+  });
 });

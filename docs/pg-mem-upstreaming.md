@@ -21,6 +21,12 @@ the emulator.
    Upstream target: `src/execution/select.ts`
 5. Top-level `WITH ... INSERT/UPDATE/DELETE` statements rejected as read-only.
    Upstream target: `src/execution/select.ts`
+6. `ROW_NUMBER() OVER (PARTITION BY ... ORDER BY ...)` window expressions were
+   rejected as unsupported.
+   Upstream target: `src/parser/expression-builder.ts`
+7. Standard `pg_catalog` helpers `btrim(text)` and `nullif(text, text)` were
+   missing.
+   Upstream target: `src/schema/pg-catalog/index.ts`
 
 The npm bundle ships `index.js` plus `index.js.map`. Use the source map to map
 bundle edits back to upstream TypeScript files.
@@ -61,6 +67,10 @@ Open one issue and one PR per bug. Include:
    Target file: `src/execution/select.ts`
 5. `pg-mem`: allow top-level data-modifying `WITH` statements.
    Target file: `src/execution/select.ts`
+6. `pg-mem`: support `ROW_NUMBER() OVER (...)` window expressions.
+   Target file: `src/parser/expression-builder.ts`
+7. `pg-mem`: add standard `btrim(text)` and `nullif(text, text)` built-ins.
+   Target file: `src/schema/pg-catalog/index.ts`
 
 Keep each PR narrow. The point is to upstream the emulator fix, not to teach the
 app to avoid standard PostgreSQL.

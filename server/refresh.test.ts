@@ -148,6 +148,31 @@ describe("applyDiscoveredItems()", () => {
     assert.deepEqual(result.updated.restaurants, [restaurant.name]);
   });
 
+  it("keeps distinct rows when restaurants share a name but not an identity", async () => {
+    await clearRestaurants(pool);
+
+    await applyDiscoveredItems(
+      {
+        restaurants: [
+          restaurant,
+          {
+            ...restaurant,
+            address: "99 Another St",
+            source_url: "https://example.com/other-location",
+          },
+        ],
+      },
+      pool,
+    );
+
+    const restaurants = await getRestaurants(pool);
+    assert.equal(restaurants.length, 2);
+    assert.deepEqual(
+      restaurants.map((entry) => entry.address).sort(),
+      ["1 Test St", "99 Another St"],
+    );
+  });
+
   it("sends push notifications for new discoveries", async () => {
     await clearRestaurants(pool);
     await clearEvents(pool);

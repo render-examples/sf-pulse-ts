@@ -1,21 +1,22 @@
 # SF Pulse
 
-SF Pulse is a TypeScript app for tracking San Francisco restaurant openings and local events. It serves an SSR React frontend from an Express server, stores data in PostgreSQL, and can optionally publish realtime updates and browser push notifications.
+SF Pulse is a TypeScript app for tracking San Francisco restaurant openings and local events. It serves Astro-rendered pages through the Node adapter, stores data in PostgreSQL, and can optionally publish realtime updates and browser push notifications.
 
 ## Stack
 
 - Node.js 20+
 - npm
 - TypeScript
-- Express 5
-- React 18 + Vite SSR
+- Astro 6 + Node adapter
 - PostgreSQL
 - Optional Redis for multi-instance realtime fanout
 
 ## Repo layout
 
-- `client/`: React app, styles, service worker, SSR entrypoints
-- `server/`: Express app, API routes, storage layer, SSR wiring, realtime
+- `src/pages/`: Astro pages and API routes
+- `src/scripts/`: browser-side progressive enhancement for the home page
+- `server/`: storage, migrations, refresh logic, security, and realtime plumbing
+- `shared/`: shared timeline/date/identity helpers used by server and browser code
 - `bin/`: build, migration, cron refresh, and menu discovery scripts
 - `migrations/`: plain SQL migrations
 - `patches/`: local `patch-package` fixes used by the test and migration stack
@@ -125,7 +126,7 @@ npx web-push generate-vapid-keys
 
 ## Development notes
 
-- There is a single Node process in local dev. You do not run a separate frontend dev server.
+- There is a single Astro/Node process in local dev. You do not run a separate frontend dev server.
 - Tests mostly use `pg-mem`, so `npm test` does not need a real `DATABASE_URL`.
 - The repo carries local patches for `pg-mem` and `pgsql-ast-parser`. If SQL-related tests start failing unexpectedly, check `patches/` and `docs/pg-mem-upstreaming.md`.
 - Protected delete routes expect `x-cron-secret` to match `CRON_SECRET`.
@@ -137,6 +138,7 @@ npx web-push generate-vapid-keys
 - `GET /api/events`
 - `GET /api/updates`
 - `GET /api/updates/last-updated`
+- `GET /api/healthz`
 - `GET /api/events-stream`
 - `GET /api/rss.xml`
 - `GET /api/push/vapid-key`

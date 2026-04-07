@@ -1,5 +1,5 @@
 diff --git a/node_modules/pg-mem/index.js b/node_modules/pg-mem/index.js
-index 15cbc92..c7aa727 100644
+index 15cbc92..8252313 100644
 --- a/node_modules/pg-mem/index.js
 +++ b/node_modules/pg-mem/index.js
 @@ -1178,10 +1178,13 @@ function typeDefToStr(t) {
@@ -63,7 +63,104 @@ index 15cbc92..c7aa727 100644
              if (alias) {
                  return buildRecord(alias);
              }
-@@ -2062,11 +2090,16 @@ function buildSelectAsArray(op) {
+@@ -1617,12 +1645,95 @@ function buildRecord(alias) {
+     }))), null, Math.random().toString() // must not be indexable => always different hash
+     , [], (raw, t) => raw, { forceNotConstant: true });
+ }
++function serializeWindowPartitionValue(value) {
++    if (value instanceof Date) {
++        return `date:${value.toISOString()}`;
++    }
++    if ((0, utils_1.nullIsh)(value)) {
++        return 'null';
++    }
++    return `${typeof value}:${String(value)}`;
++}
++function buildWindowCall(val) {
++    var _a, _b;
++    const nm = (0, utils_1.asSingleQName)(val.function, 'pg_catalog');
++    if (nm !== 'row_number' || val.args.length) {
++        throw new interfaces_1.NotSupported(`window function "${nm !== null && nm !== void 0 ? nm : 'unknown'}" is not implemented in pg-mem yet`);
++    }
++    const selection = (0, context_1.buildCtx)().selection;
++    const partitionBy = ((_a = val.over) === null || _a === void 0 ? void 0 : _a.partitionBy).map(x => _buildValue(x));
++    const order = ((_b = val.over) === null || _b === void 0 ? void 0 : _b.orderBy).map(x => {
++        var _a;
++        const order = (_a = x.order) !== null && _a !== void 0 ? _a : 'ASC';
++        return ({
++            by: _buildValue(x.by),
++            order,
++            nullsLast: order === 'ASC' ? x.nulls !== 'FIRST' : x.nulls === 'LAST',
++        });
++    });
++    let cacheFor = null;
++    let cache = new Map();
++    const buildCache = (t) => {
++        if (cacheFor === t) {
++            return;
++        }
++        cacheFor = t;
++        cache = new Map();
++        const partitions = new Map();
++        let originalIndex = 0;
++        for (const raw of selection.enumerate(t)) {
++            const key = partitionBy.length
++                ? partitionBy.map(expr => serializeWindowPartitionValue(expr.get(raw, t))).join('|')
++                : '__all__';
++            const bucket = partitions.get(key);
++            const entry = { raw, originalIndex: originalIndex++ };
++            if (bucket) {
++                bucket.push(entry);
++            }
++            else {
++                partitions.set(key, [entry]);
++            }
++        }
++        for (const entries of partitions.values()) {
++            entries.sort((a, b) => {
++                for (const o of order) {
++                    const aval = o.by.get(a.raw, t);
++                    const bval = o.by.get(b.raw, t);
++                    const na = (0, utils_1.nullIsh)(aval);
++                    const nb = (0, utils_1.nullIsh)(bval);
++                    if (na && nb) {
++                        continue;
++                    }
++                    if (na || nb) {
++                        return nb === o.nullsLast ? -1 : 1;
++                    }
++                    if (o.by.type.equals(aval, bval)) {
++                        continue;
++                    }
++                    if (o.by.type.gt(aval, bval)) {
++                        return o.order === 'ASC' ? 1 : -1;
++                    }
++                    return o.order === 'ASC' ? -1 : 1;
++                }
++                return a.originalIndex - b.originalIndex;
++            });
++            entries.forEach((entry, index) => {
++                cache.set(entry.raw, index + 1);
++            });
++        }
++    };
++    return new evaluator_1.Evaluator(datatypes_1.Types.integer, null, Math.random().toString(), [], (raw, t) => {
++        buildCache(t);
++        var _a;
++        return (_a = cache.get(raw)) !== null && _a !== void 0 ? _a : null;
++    }, { forceNotConstant: true });
++}
+ function _buildCall(val) {
+     // if (typeof val.function !== 'string') {
+     //     return buildKeyword( val.function, val.args);
+     // }
+     if (val.over) {
+-        throw new interfaces_1.NotSupported('"OVER" clause is not implemented in pg-mem yet');
++        return buildWindowCall(val);
+     }
+     const nm = (0, utils_1.asSingleQName)(val.function, 'pg_catalog');
+     if (nm && aggregation_1.aggregationFunctions.has(nm)) {
+@@ -2062,11 +2173,16 @@ function buildSelectAsArray(op) {
      return new evaluator_1.Evaluator(onData.columns[0].type.asList(), null, Math.random().toString() // must not be indexable => always different hash
      , null // , onData.columns[0]
      , (raw, t) => {
@@ -85,7 +182,7 @@ index 15cbc92..c7aa727 100644
      }, {
          forceNotConstant: true
      });
-@@ -3030,12 +3063,14 @@ function buildWith(p, topLevel) {
+@@ -3030,12 +3146,14 @@ function buildWith(p, topLevel) {
      return (0, context_1.withBindingScope)(() => {
          const { setTempBinding } = (0, context_1.buildCtx)();
          // declare temp bindings
@@ -103,7 +200,7 @@ index 15cbc92..c7aa727 100644
      });
  }
  function buildRawSelectSubject(p) {
-@@ -3300,9 +3335,11 @@ class Evaluator {
+@@ -3300,9 +3418,11 @@ class Evaluator {
              for (const d of depArray) {
                  if (d.origin) {
                      if (this.origin && d.origin && this.origin !== d.origin) {
@@ -117,7 +214,7 @@ index 15cbc92..c7aa727 100644
                  }
                  if (!d.isConstant) {
                      hasNotConstant = true;
-@@ -11307,6 +11344,12 @@ class ExecuteCreateTable extends exec_utils_1.ExecHelper {
+@@ -11307,6 +11427,12 @@ class ExecuteCreateTable extends exec_utils_1.ExecHelper {
                      }
                      // TODO: #collation
                      (0, utils_1.ignore)(f.collate);
@@ -130,3 +227,22 @@ index 15cbc92..c7aa727 100644
                      const nf = {
                          ...f,
                          name: f.name.name,
+@@ -14736,6 +14862,18 @@ function setupPgCatalog(db) {
+         returns: datatypes_1.Types.text(),
+         implementation: expression_builder_1.sqlSubstring,
+     });
++    catalog.registerFunction({
++        name: 'btrim',
++        args: [datatypes_1.Types.text()],
++        returns: datatypes_1.Types.text(),
++        implementation: value => value.replace(/^\s+|\s+$/g, ''),
++    });
++    catalog.registerFunction({
++        name: 'nullif',
++        args: [datatypes_1.Types.text(), datatypes_1.Types.text()],
++        returns: datatypes_1.Types.text(),
++        implementation: (left, right) => left === right ? null : left,
++    });
+     catalog.registerFunction({
+         // required for Sequelize introspection
+         name: 'pg_get_indexdef',

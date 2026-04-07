@@ -5,6 +5,7 @@ import * as storage from "./storage.js";
 import { getVapidConfig, isTrustedPushEndpoint } from "./security.js";
 import { broadcast } from "./sse.js";
 import { buildEventIdentityKey } from "../shared/event-identity.ts";
+import { buildRestaurantIdentityKey } from "../shared/restaurant-identity.ts";
 import { normalizeDateText } from "../shared/dates.ts";
 
 export interface ApplyDiscoveredItemsInput {
@@ -54,6 +55,43 @@ async function pushToAll(
   await Promise.allSettled(sends);
 }
 
+function mergeRestaurantForUpsert(
+  incoming: NewRestaurant,
+  existing?: storage.Restaurant,
+): NewRestaurant {
+  const nextKind = incoming.highlight_kind ?? existing?.highlight_kind ?? "opening";
+  const incomingNeighborhood = incoming.neighborhood.trim();
+  const keepExistingNeighborhood =
+    nextKind === "michelin" &&
+    incomingNeighborhood.toLowerCase() === "san francisco" &&
+    Boolean(existing?.neighborhood);
+
+  return {
+    ...incoming,
+    neighborhood: keepExistingNeighborhood
+      ? (existing?.neighborhood ?? incoming.neighborhood)
+      : incoming.neighborhood,
+    address: incoming.address ?? existing?.address ?? null,
+    source_url: incoming.source_url ?? existing?.source_url ?? null,
+    highlight_kind: nextKind,
+  };
+}
+
+function hasRestaurantChange(
+  existing: storage.Restaurant,
+  next: NewRestaurant,
+): boolean {
+  return (
+    existing.name !== next.name ||
+    existing.neighborhood !== next.neighborhood ||
+    existing.cuisine !== next.cuisine ||
+    existing.address !== (next.address ?? null) ||
+    existing.opened_date !== next.opened_date ||
+    existing.source_url !== (next.source_url ?? null) ||
+    existing.highlight_kind !== (next.highlight_kind ?? "opening")
+  );
+}
+
 export async function applyDiscoveredItems(
   { restaurants = [], events = [] }: ApplyDiscoveredItemsInput,
   pool?: Pool,
@@ -63,30 +101,27 @@ export async function applyDiscoveredItems(
   const updatedRestaurants: string[] = [];
 
   for (const restaurant of restaurants) {
-    const existing = await storage.getRestaurantByName(restaurant.name, pool);
-    if (existing) {
-      if (restaurant.highlight_kind === "michelin") {
-        const nextKind = restaurant.highlight_kind ?? "opening";
-        const changed =
-          existing.highlight_kind !== nextKind ||
-          existing.opened_date !== restaurant.opened_date ||
-          existing.source_url !== (restaurant.source_url ?? null) ||
-          existing.cuisine !== restaurant.cuisine ||
-          existing.neighborhood !== restaurant.neighborhood ||
-          existing.address !== (restaurant.address ?? null);
+    const identityKey = buildRestaurantIdentityKey(restaurant);
+    const existing =
+      (await storage.getRestaurantByIdentityKey(identityKey, pool)) ??
+      (restaurant.highlight_kind === "michelin"
+        ? await storage.getRestaurantByName(restaurant.name, pool)
+        : undefined);
+    const mergedRestaurant = mergeRestaurantForUpsert(restaurant, existing);
+    const persisted = await storage.addRestaurant(mergedRestaurant, pool);
 
-        if (changed) {
-          await storage.updateRestaurant(existing.id, restaurant, pool);
-          await storage.recordUpdate("restaurant", existing.name, "updated", pool);
-          updatedRestaurants.push(existing.name);
-        }
-      }
+    if (!existing) {
+      await storage.recordUpdate("restaurant", persisted.name, "added", pool);
+      newRestaurants.push(persisted.name);
       continue;
     }
 
-    const added = await storage.addRestaurant(restaurant, pool);
-    await storage.recordUpdate("restaurant", added.name, "added", pool);
-    newRestaurants.push(added.name);
+    if (!hasRestaurantChange(existing, mergedRestaurant)) {
+      continue;
+    }
+
+    await storage.recordUpdate("restaurant", persisted.name, "updated", pool);
+    updatedRestaurants.push(persisted.name);
   }
 
   for (const event of events) {

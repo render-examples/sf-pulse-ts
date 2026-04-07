@@ -8,6 +8,7 @@ import {
   type DatePrecision,
 } from "../shared/dates.ts";
 import { buildEventIdentityKey } from "../shared/event-identity.ts";
+import { buildRestaurantIdentityKey } from "../shared/restaurant-identity.ts";
 
 export interface DietaryFlag {
   available: boolean;
@@ -185,39 +186,8 @@ function subtractMonthsUTC(reference: Date, months: number): Date {
   );
 }
 
-function isVisibleRestaurant(
-  restaurant: Restaurant,
-  reference = todayUTC(),
-): boolean {
-  if (restaurant.highlight_kind === "michelin") {
-    return true;
-  }
-
-  const normalized = normalizeRestaurantDates(restaurant);
-  if (normalized.is_upcoming) {
-    return true;
-  }
-
-  if (!normalized.opened_start_date) {
-    return false;
-  }
-
-  return (
-    new Date(`${normalized.opened_start_date}T00:00:00.000Z`).getTime() >=
-    subtractMonthsUTC(reference, 3).getTime()
-  );
-}
-
-function isVisibleEvent(event: Event, reference = todayUTC()): boolean {
-  const normalized = normalizeEventDates(event);
-  const relevantDate = normalized.end_date ?? normalized.start_date;
-  if (!relevantDate) {
-    return normalized.is_upcoming;
-  }
-
-  return (
-    new Date(`${relevantDate}T00:00:00.000Z`).getTime() >= reference.getTime()
-  );
+function formatIsoDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
 }
 
 // ── Restaurants ──────────────────────────────────────────────────────────────
@@ -229,8 +199,18 @@ export function getRestaurants(pool?: Pool): Promise<Restaurant[]> {
 }
 
 export async function getVisibleRestaurants(pool?: Pool): Promise<Restaurant[]> {
-  const restaurants = await getRestaurants(pool);
-  return restaurants.filter((restaurant) => isVisibleRestaurant(restaurant));
+  const cutoff = formatIsoDate(subtractMonthsUTC(todayUTC(), 3));
+  const restaurants = await q<Restaurant>(
+    `SELECT *
+     FROM restaurants
+     WHERE highlight_kind = 'michelin'
+        OR is_upcoming = TRUE
+        OR opened_start_date >= $1
+     ORDER BY added_at DESC`,
+    [cutoff],
+    pool,
+  );
+  return restaurants.map(normalizeRestaurantDates);
 }
 
 export type NewRestaurant = Omit<
@@ -254,6 +234,7 @@ export async function addRestaurant(
   pool?: Pool
 ): Promise<Restaurant> {
   const structured = deriveStructuredDate(r.opened_date);
+  const identityKey = buildRestaurantIdentityKey(r);
   return q1<Restaurant>(
     `INSERT INTO restaurants (
        name,
@@ -266,9 +247,22 @@ export async function addRestaurant(
        opened_date_precision,
        is_upcoming,
        source_url,
-       highlight_kind
+       highlight_kind,
+       identity_key
      )
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+     ON CONFLICT (identity_key) DO UPDATE
+     SET name = EXCLUDED.name,
+         neighborhood = EXCLUDED.neighborhood,
+         cuisine = EXCLUDED.cuisine,
+         address = EXCLUDED.address,
+         opened_date = EXCLUDED.opened_date,
+         opened_start_date = EXCLUDED.opened_start_date,
+         opened_end_date = EXCLUDED.opened_end_date,
+         opened_date_precision = EXCLUDED.opened_date_precision,
+         is_upcoming = EXCLUDED.is_upcoming,
+         source_url = EXCLUDED.source_url,
+         highlight_kind = EXCLUDED.highlight_kind
      RETURNING *`,
     [
       r.name,
@@ -282,9 +276,21 @@ export async function addRestaurant(
       structured.isUpcoming,
       r.source_url ?? null,
       r.highlight_kind ?? "opening",
+      identityKey,
     ],
     pool
   ).then((row) => normalizeRestaurantDates(row as Restaurant)) as Promise<Restaurant>;
+}
+
+export function getRestaurantByIdentityKey(
+  identityKey: string,
+  pool?: Pool,
+): Promise<Restaurant | undefined> {
+  return q1<Restaurant>(
+    "SELECT * FROM restaurants WHERE identity_key = $1 LIMIT 1",
+    [identityKey],
+    pool,
+  ).then((row) => (row ? normalizeRestaurantDates(row as Restaurant) : undefined));
 }
 
 export function getRestaurantByName(
@@ -304,6 +310,7 @@ export async function updateRestaurant(
   pool?: Pool,
 ): Promise<Restaurant> {
   const structured = deriveStructuredDate(r.opened_date);
+  const identityKey = buildRestaurantIdentityKey(r);
   return q1<Restaurant>(
     `UPDATE restaurants
      SET name = $1,
@@ -316,8 +323,9 @@ export async function updateRestaurant(
          opened_date_precision = $8,
          is_upcoming = $9,
          source_url = $10,
-         highlight_kind = $11
-     WHERE id = $12
+         highlight_kind = $11,
+         identity_key = $12
+     WHERE id = $13
      RETURNING *`,
     [
       r.name,
@@ -331,6 +339,7 @@ export async function updateRestaurant(
       structured.isUpcoming,
       r.source_url ?? null,
       r.highlight_kind ?? "opening",
+      identityKey,
       id,
     ],
     pool,
@@ -353,8 +362,16 @@ export async function getEvents(pool?: Pool): Promise<Event[]> {
 }
 
 export async function getVisibleEvents(pool?: Pool): Promise<Event[]> {
-  const events = await getEvents(pool);
-  return events.filter((event) => isVisibleEvent(event));
+  const cutoff = formatIsoDate(todayUTC());
+  const events = await q<Event>(
+    `SELECT *
+     FROM events
+     WHERE COALESCE(end_date, start_date) >= $1
+        OR (start_date IS NULL AND end_date IS NULL AND is_upcoming = TRUE)`,
+    [cutoff],
+    pool,
+  );
+  return events.map(normalizeEventDates).sort((a, b) => compareDateText(a.date, b.date));
 }
 
 export type NewEvent = Omit<

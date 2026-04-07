@@ -39,7 +39,6 @@ async function buildAll() {
       format: "cjs",
       outfile: `${outfile}.cjs`,
       external: ext,
-      minify: outfile === "dist/index",
       logLevel: "info",
       define: { "import.meta.dirname": "__dirname" },
     });

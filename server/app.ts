@@ -8,6 +8,7 @@ import { getPushVapidKeyResponse, subscribeToPushResponse, unsubscribeFromPushRe
 import { getUpdatesResponse, getLastUpdatedResponse } from "../src/server/api/updates.js";
 import { getEventsStreamResponse } from "../src/server/api/events-stream.js";
 import { getRssResponse } from "../src/server/api/rss.js";
+import { getHealthResponse } from "../src/server/api/health.js";
 
 export interface AppInstance {
   app: (req: IncomingMessage, res: ServerResponse) => void;
@@ -98,6 +99,10 @@ async function handleRequest(request: Request, pool?: Pool): Promise<Response> {
 
   if (request.method === "GET" && pathname === "/api/rss.xml") {
     return getRssResponse(pool);
+  }
+
+  if (request.method === "GET" && pathname === "/api/healthz") {
+    return getHealthResponse();
   }
 
   return Response.json({ message: "Not Found" }, { status: 404 });

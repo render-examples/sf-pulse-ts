@@ -18,8 +18,10 @@ services:
     buildCommand: npm ci --include=dev && npm run build
     preDeployCommand: node dist/bin/migrate.cjs
     startCommand: node dist/server/entry.mjs
-    healthCheckPath: /api/updates/last-updated
+    healthCheckPath: /api/healthz
     envVars:
+      - key: HOST
+        value: 0.0.0.0
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
