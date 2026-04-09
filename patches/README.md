@@ -175,7 +175,63 @@ PostgreSQL semantics for the text signatures used by this repo.
 ### Upstream target
 
 - Upstream repo: https://github.com/oguimbal/pg-mem
+- Source file from `index.js.map`: `src/schema/pg-catalog/binary-operators.ts`
+- Regression tests in this repo:
+  [server/pg-mem.test.ts](/Users/joeybaker/Code/sf-pulse/server/pg-mem.test.ts)
+  and [server/migrate.test.ts](/Users/joeybaker/Code/sf-pulse/server/migrate.test.ts)
+
+### Bug 7
+
+Standard PostgreSQL `position(text, text)` execution support was missing once
+the parser produced the correct argument list. The structured-date backfill
+migration uses `position(...)` repeatedly when parsing legacy seed strings.
+
+### Fix
+
+Register `position(text, text)` in `pg_catalog` with PostgreSQL semantics:
+return the 1-based match offset or `0` when the substring is absent.
+
+### Upstream target
+
+- Upstream repo: https://github.com/oguimbal/pg-mem
 - Source file from `index.js.map`: `src/schema/pg-catalog/index.ts`
+- Regression tests in this repo:
+  [server/pg-mem.test.ts](/Users/joeybaker/Code/sf-pulse/server/pg-mem.test.ts)
+  and [server/migrate.test.ts](/Users/joeybaker/Code/sf-pulse/server/migrate.test.ts)
+
+### Bug 8
+
+Standard numeric `%` operators were not registered, so valid PostgreSQL modulo
+expressions such as `year_num % 4` failed during the leap-year logic in the
+structured-date backfill migration.
+
+### Fix
+
+Register `%` for the numeric operator matrix alongside `+`, `-`, `*`, and `/`.
+
+### Upstream target
+
+- Upstream repo: https://github.com/oguimbal/pg-mem
+- Source file from `index.js.map`: `src/schema/pg-catalog/index.ts`
+- Regression tests in this repo:
+  [server/pg-mem.test.ts](/Users/joeybaker/Code/sf-pulse/server/pg-mem.test.ts)
+  and [server/migrate.test.ts](/Users/joeybaker/Code/sf-pulse/server/migrate.test.ts)
+
+### Bug 9
+
+Standard PostgreSQL `date::text` casts were rejected. The backfill regression
+queries cast `date` columns to `text` to assert deterministic string values,
+which PostgreSQL supports.
+
+### Fix
+
+Allow `date -> text` casts in `TimestampType` and format the value as
+`YYYY-MM-DD`.
+
+### Upstream target
+
+- Upstream repo: https://github.com/oguimbal/pg-mem
+- Source file from `index.js.map`: `src/datatypes/t-timestamp.ts`
 - Regression tests in this repo:
   [server/pg-mem.test.ts](/Users/joeybaker/Code/sf-pulse/server/pg-mem.test.ts)
   and [server/migrate.test.ts](/Users/joeybaker/Code/sf-pulse/server/migrate.test.ts)
@@ -187,7 +243,7 @@ PostgreSQL semantics for the text signatures used by this repo.
 **Package:** `pgsql-ast-parser@12.0.2`
 **Files patched:** `index.js`, `src/syntax/with.ne`
 
-### Bug
+### Bug 1
 
 Non-recursive CTE bindings reject valid PostgreSQL column lists such as:
 
@@ -209,5 +265,24 @@ Allow an optional `collist_paren` between the CTE name and `AS` in
 
 - Upstream repo: https://github.com/oguimbal/pgsql-ast-parser
 - Source file: `src/syntax/with.ne`
+- Regression test in this repo:
+  [server/pgsql-ast-parser.test.ts](/Users/joeybaker/Code/sf-pulse/server/pgsql-ast-parser.test.ts)
+
+### Bug 2
+
+PostgreSQL `position(substring in string)` syntax parsed to a one-argument
+`position(<binary IN>)` call instead of a normal two-argument function call.
+That left downstream executors trying to resolve a nonexistent `position(bool)`
+signature.
+
+### Fix
+
+Normalize parsed call expressions so `position(<binary IN>)` becomes a regular
+`position(left, right)` call before the AST is returned to consumers.
+
+### Upstream target
+
+- Upstream repo: https://github.com/oguimbal/pgsql-ast-parser
+- Source file: `src/parser.ts`
 - Regression test in this repo:
   [server/pgsql-ast-parser.test.ts](/Users/joeybaker/Code/sf-pulse/server/pgsql-ast-parser.test.ts)

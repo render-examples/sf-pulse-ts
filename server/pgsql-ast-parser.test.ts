@@ -18,4 +18,28 @@ describe("pgsql-ast-parser patch regressions", () => {
     })?.bind?.[0];
     assert.deepEqual(firstBinding?.columnNames, [{ name: "name" }]);
   });
+
+  it("parses PostgreSQL position(substring in string) syntax as a two-argument call", () => {
+    const statements = parse(`SELECT position('a' in 'cat') AS pos`);
+
+    assert.equal(statements.length, 1);
+    const statement = statements[0] as {
+      columns?: Array<{
+        expr?: {
+          type?: string;
+          function?: { name?: string };
+          args?: Array<{ type?: string; value?: string }>;
+        };
+      }>;
+    };
+
+    assert.deepEqual(statement.columns?.[0]?.expr, {
+      type: "call",
+      function: { name: "position" },
+      args: [
+        { type: "string", value: "a" },
+        { type: "string", value: "cat" },
+      ],
+    });
+  });
 });

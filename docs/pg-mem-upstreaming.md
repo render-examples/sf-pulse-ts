@@ -27,6 +27,18 @@ the emulator.
 7. Standard `pg_catalog` helpers `btrim(text)` and `nullif(text, text)` were
    missing.
    Upstream target: `src/schema/pg-catalog/index.ts`
+8. `position(substring in string)` parsed into a one-argument `position(<binary IN>)`
+   call instead of a normal two-argument function call.
+   Upstream package: `pgsql-ast-parser`
+   Upstream target: `src/parser.ts`
+9. Standard PostgreSQL `position(text, text)` execution support was missing once
+   the parser produced the correct argument list.
+   Upstream target: `src/schema/pg-catalog/index.ts`
+10. Numeric `%` operators were not registered, so valid modulo expressions such
+    as `year_num % 4` failed during execution.
+    Upstream target: `src/schema/pg-catalog/binary-operators.ts`
+11. Standard `date::text` casts were rejected.
+    Upstream target: `src/datatypes/t-timestamp.ts`
 
 The npm bundle ships `index.js` plus `index.js.map`. Use the source map to map
 bundle edits back to upstream TypeScript files.
@@ -71,6 +83,15 @@ Open one issue and one PR per bug. Include:
    Target file: `src/parser/expression-builder.ts`
 7. `pg-mem`: add standard `btrim(text)` and `nullif(text, text)` built-ins.
    Target file: `src/schema/pg-catalog/index.ts`
+8. `pgsql-ast-parser`: normalize `position(substring in string)` into a
+   two-argument function call.
+   Target file: `src/parser.ts`
+9. `pg-mem`: add standard `position(text, text)` execution support.
+   Target file: `src/schema/pg-catalog/index.ts`
+10. `pg-mem`: register numeric `%` operators for standard modulo semantics.
+    Target file: `src/schema/pg-catalog/binary-operators.ts`
+11. `pg-mem`: allow standard `date::text` casts.
+    Target file: `src/datatypes/t-timestamp.ts`
 
 Keep each PR narrow. The point is to upstream the emulator fix, not to teach the
 app to avoid standard PostgreSQL.

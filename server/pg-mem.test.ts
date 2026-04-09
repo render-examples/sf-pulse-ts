@@ -101,6 +101,33 @@ describe("pg-mem patch regressions", () => {
     assert.deepEqual(rows, [{ same: null, different: "Mission" }]);
   });
 
+  it("supports PostgreSQL position(substring in string) syntax", async () => {
+    const pool = freshPool();
+    const { rows } = await pool.query<{ pos: number; missing: number }>(
+      "SELECT position('a' in 'cat') AS pos, position('z' in 'cat') AS missing",
+    );
+
+    assert.deepEqual(rows, [{ pos: 2, missing: 0 }]);
+  });
+
+  it("supports numeric modulo operators", async () => {
+    const pool = freshPool();
+    const { rows } = await pool.query<{ int_mod: number; numeric_mod: number }>(
+      "SELECT 5 % 2 AS int_mod, 5.5 % 2 AS numeric_mod",
+    );
+
+    assert.deepEqual(rows, [{ int_mod: 1, numeric_mod: 1.5 }]);
+  });
+
+  it("supports casting dates to text", async () => {
+    const pool = freshPool();
+    const { rows } = await pool.query<{ value: string }>(
+      "SELECT DATE '2026-07-01'::text AS value",
+    );
+
+    assert.deepEqual(rows, [{ value: "2026-07-01" }]);
+  });
+
   it("supports ROW_NUMBER() OVER with PARTITION BY and ORDER BY", async () => {
     const pool = freshPool();
     await pool.query(`

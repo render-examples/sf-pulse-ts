@@ -1,5 +1,5 @@
 diff --git a/node_modules/pg-mem/index.js b/node_modules/pg-mem/index.js
-index 15cbc92..8252313 100644
+index 15cbc92..5576b8c 100644
 --- a/node_modules/pg-mem/index.js
 +++ b/node_modules/pg-mem/index.js
 @@ -1178,10 +1178,13 @@ function typeDefToStr(t) {
@@ -214,7 +214,27 @@ index 15cbc92..8252313 100644
                  }
                  if (!d.isConstant) {
                      hasNotConstant = true;
-@@ -11307,6 +11427,12 @@ class ExecuteCreateTable extends exec_utils_1.ExecHelper {
+@@ -8628,6 +8748,8 @@ class TimestampType extends datatype_base_1.TypeBase {
+                 return this.primary !== interfaces_private_1.DataType.date;
+             case interfaces_private_1.DataType.timetz:
+                 return this.primary !== interfaces_private_1.DataType.date && this.primary !== interfaces_private_1.DataType.timestamp;
++            case interfaces_private_1.DataType.text:
++                return this.primary === interfaces_private_1.DataType.date;
+         }
+         return null;
+     }
+@@ -8657,6 +8779,10 @@ class TimestampType extends datatype_base_1.TypeBase {
+             case interfaces_private_1.DataType.timetz:
+                 return value
+                     .setConversion(raw => moment_1.default.utc(raw).format('HH:mm:ss') + '.000000', toDate => ({ toDate }));
++            case interfaces_private_1.DataType.text:
++                return value
++                    .setType(to)
++                    .setConversion(raw => moment_1.default.utc(raw).format('YYYY-MM-DD'), toText => ({ toText }));
+         }
+         throw new Error('Unexpected cast error');
+     }
+@@ -11307,6 +11433,12 @@ class ExecuteCreateTable extends exec_utils_1.ExecHelper {
                      }
                      // TODO: #collation
                      (0, utils_1.ignore)(f.collate);
@@ -227,10 +247,19 @@ index 15cbc92..8252313 100644
                      const nf = {
                          ...f,
                          name: f.name.name,
-@@ -14736,6 +14862,18 @@ function setupPgCatalog(db) {
+@@ -14736,6 +14868,27 @@ function setupPgCatalog(db) {
          returns: datatypes_1.Types.text(),
          implementation: expression_builder_1.sqlSubstring,
      });
++    catalog.registerFunction({
++        name: 'position',
++        args: [datatypes_1.Types.text(), datatypes_1.Types.text()],
++        returns: datatypes_1.Types.integer,
++        implementation: (substring, value) => {
++            const index = value.indexOf(substring);
++            return index >= 0 ? index + 1 : 0;
++        },
++    });
 +    catalog.registerFunction({
 +        name: 'btrim',
 +        args: [datatypes_1.Types.text()],
@@ -246,3 +275,20 @@ index 15cbc92..8252313 100644
      catalog.registerFunction({
          // required for Sequelize introspection
          name: 'pg_get_indexdef',
+@@ -15855,6 +16008,16 @@ function registerNumericOperators(schema) {
+                 : ((a, b) => a / b),
+         });
+     }
++    for (const [left, right, returns] of numberPairs()) {
++        schema.registerOperator({
++            operator: '%',
++            commutative: false,
++            left,
++            right,
++            returns,
++            implementation: (a, b) => a % b,
++        });
++    }
+ }
+ function registerDatetimeOperators(schema) {
+     // ======= date "-" date =======

@@ -35,6 +35,7 @@ const lastUpdatedNodes = Array.from(document.querySelectorAll<HTMLElement>("[dat
 const toastRegion = document.querySelector<HTMLElement>("[data-toast-region]");
 
 let toastId = 0;
+type TimelineKind = "restaurants" | "events";
 
 function escapeHtml(value: string): string {
   return value
@@ -247,7 +248,11 @@ function filterEvents(value: string): SFEvent[] {
   );
 }
 
-function scrollToday(kind: "restaurants" | "events"): void {
+function activeTimelineKind(): TimelineKind {
+  return window.location.hash === "#events" ? "events" : "restaurants";
+}
+
+function scrollToday(kind: TimelineKind): void {
   const container = document.querySelector<HTMLElement>(`[data-scroll-container="${kind}"]`);
   const today = document.querySelector<HTMLElement>(`[data-today-row="${kind}"]`);
   if (!container || !today) return;
@@ -259,6 +264,20 @@ function scrollToday(kind: "restaurants" | "events"): void {
   container.scrollTop = Math.max(0, target);
 }
 
+function scheduleTodayScroll(kind: TimelineKind, waitForLayout = false): void {
+  requestAnimationFrame(() => {
+    if (waitForLayout) {
+      requestAnimationFrame(() => scrollToday(kind));
+      return;
+    }
+    scrollToday(kind);
+  });
+}
+
+function scheduleActiveTodayScroll(waitForLayout = false): void {
+  scheduleTodayScroll(activeTimelineKind(), waitForLayout);
+}
+
 function renderRestaurants(): void {
   if (!restaurantsBody || !restaurantsEmpty) return;
   const filtered = filterRestaurants(restaurantsInput?.value ?? "");
@@ -267,7 +286,7 @@ function renderRestaurants(): void {
   if (restaurantsCount) {
     restaurantsCount.textContent = String(state.data.restaurants.length);
   }
-  requestAnimationFrame(() => scrollToday("restaurants"));
+  scheduleTodayScroll("restaurants");
 }
 
 function renderEvents(): void {
@@ -278,7 +297,7 @@ function renderEvents(): void {
   if (eventsCount) {
     eventsCount.textContent = String(state.data.events.length);
   }
-  requestAnimationFrame(() => scrollToday("events"));
+  scheduleTodayScroll("events");
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -471,13 +490,18 @@ function initSse(): void {
 restaurantsInput?.addEventListener("input", renderRestaurants);
 eventsInput?.addEventListener("input", renderEvents);
 window.addEventListener("hashchange", () => {
-  requestAnimationFrame(() => {
-    scrollToday(window.location.hash === "#events" ? "events" : "restaurants");
-  });
+  scheduleActiveTodayScroll(true);
+});
+window.addEventListener("load", () => {
+  scheduleActiveTodayScroll(true);
+}, { once: true });
+window.addEventListener("pageshow", () => {
+  scheduleActiveTodayScroll(true);
 });
 
 renderRestaurants();
 renderEvents();
+scheduleActiveTodayScroll(true);
 updateLastUpdated();
 void refreshIfBuildIsStale();
 void initPush();

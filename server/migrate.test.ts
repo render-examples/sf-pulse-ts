@@ -416,8 +416,8 @@ describe("migrate()", () => {
        WHERE name = 'Maillards'`,
     );
     assert.deepEqual(restaurant, {
-      opened_start_date: "2026-07-01",
-      opened_end_date: "2026-09-30",
+      opened_start_date: "2026-04-01",
+      opened_end_date: "2026-06-30",
       opened_date_precision: "season",
       is_upcoming: true,
     });
