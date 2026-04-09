@@ -9,6 +9,8 @@ export interface DietaryFlags {
   vegetarian: DietaryFlag;
 }
 
+export type DietaryFlagKey = keyof DietaryFlags;
+
 export interface Restaurant {
   id: number;
   name: string;
@@ -58,4 +60,18 @@ export interface InitialData {
   restaurants: Restaurant[];
   events: SFEvent[];
   lastUpdated: string | null;
+}
+
+export interface PushPreferences {
+  neighborhoods: string[];
+  cuisines: string[];
+  dietary_flags: DietaryFlagKey[];
+  event_categories: string[];
+}
+
+export interface RealtimeCollectionEvent<T> {
+  version: string | null;
+  upserted: T[];
+  deleted: number[];
+  summary?: string;
 }

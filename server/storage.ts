@@ -9,6 +9,8 @@ import {
 } from "../shared/dates.ts";
 import { buildEventIdentityKey } from "../shared/event-identity.ts";
 import { buildRestaurantIdentityKey } from "../shared/restaurant-identity.ts";
+import { normalizePushPreferences } from "../shared/catalog.ts";
+import type { PushPreferences } from "../shared/types.ts";
 
 export interface DietaryFlag {
   available: boolean;
@@ -60,7 +62,9 @@ export interface PushSubscription {
   id: number;
   endpoint: string;
   keys: { p256dh: string; auth: string };
+  preferences: PushPreferences;
   created_at: string;
+  updated_at: string;
 }
 
 export interface DataUpdate {
@@ -173,6 +177,21 @@ function normalizeEventDates(event: Event): Event {
         location: event.location,
         dateText: normalizeDateText(event.date),
       }),
+  };
+}
+
+function normalizePushSubscription(subscription: PushSubscription): PushSubscription {
+  return {
+    ...subscription,
+    keys:
+      typeof subscription.keys === "string"
+        ? (JSON.parse(subscription.keys) as PushSubscription["keys"])
+        : subscription.keys,
+    preferences: normalizePushPreferences(
+      typeof subscription.preferences === "string"
+        ? (JSON.parse(subscription.preferences) as PushPreferences)
+        : subscription.preferences,
+    ),
   };
 }
 
@@ -330,6 +349,17 @@ export function getRestaurantByName(
   );
 }
 
+export function getRestaurantById(
+  id: number,
+  pool?: Pool,
+): Promise<Restaurant | undefined> {
+  return q1<Restaurant>(
+    "SELECT * FROM restaurants WHERE id = $1 LIMIT 1",
+    [id],
+    pool,
+  ).then((row) => (row ? normalizeRestaurantDates(row as Restaurant) : undefined));
+}
+
 export async function updateRestaurant(
   id: number,
   r: NewRestaurant,
@@ -451,6 +481,17 @@ export function getEventByDedupeKey(
   ).then((row) => (row ? normalizeEventDates(row as Event) : undefined));
 }
 
+export function getEventById(
+  id: number,
+  pool?: Pool,
+): Promise<Event | undefined> {
+  return q1<Event>(
+    "SELECT * FROM events WHERE id = $1 LIMIT 1",
+    [id],
+    pool,
+  ).then((row) => (row ? normalizeEventDates(row as Event) : undefined));
+}
+
 export async function clearEvents(pool?: Pool): Promise<void> {
   await exec("DELETE FROM events", [], pool);
 }
@@ -462,22 +503,66 @@ export async function deleteEvent(id: number, pool?: Pool): Promise<void> {
 // ── Push subscriptions ────────────────────────────────────────────────────────
 
 export function getSubscriptions(pool?: Pool): Promise<PushSubscription[]> {
-  return q<PushSubscription>("SELECT * FROM push_subscriptions", [], pool);
+  return q<PushSubscription>(
+    "SELECT * FROM push_subscriptions ORDER BY created_at ASC",
+    [],
+    pool,
+  ).then((rows) => rows.map((row) => normalizePushSubscription(row as PushSubscription)));
 }
 
 export async function addSubscription(
   endpoint: string,
   keys: { p256dh: string; auth: string },
-  pool?: Pool
+  preferencesOrPool?: PushPreferences | Pool,
+  poolArg?: Pool,
 ): Promise<PushSubscription> {
+  const pool =
+    preferencesOrPool && "query" in preferencesOrPool
+      ? (preferencesOrPool as Pool)
+      : poolArg;
+  const preferences =
+    preferencesOrPool && "query" in preferencesOrPool
+      ? undefined
+      : (preferencesOrPool as PushPreferences | undefined);
+  const normalizedPreferences = normalizePushPreferences(preferences);
   return q1<PushSubscription>(
-    `INSERT INTO push_subscriptions (endpoint, keys)
-     VALUES ($1,$2)
-     ON CONFLICT (endpoint) DO UPDATE SET keys=EXCLUDED.keys
+    `INSERT INTO push_subscriptions (endpoint, keys, preferences)
+     VALUES ($1,$2,$3)
+     ON CONFLICT (endpoint) DO UPDATE
+     SET keys = EXCLUDED.keys,
+         preferences = EXCLUDED.preferences,
+         updated_at = NOW()
      RETURNING *`,
-    [endpoint, JSON.stringify(keys)],
+    [endpoint, JSON.stringify(keys), JSON.stringify(normalizedPreferences)],
     pool
-  ) as Promise<PushSubscription>;
+  ).then((row) => normalizePushSubscription(row as PushSubscription)) as Promise<PushSubscription>;
+}
+
+export function getSubscriptionByEndpoint(
+  endpoint: string,
+  pool?: Pool,
+): Promise<PushSubscription | undefined> {
+  return q1<PushSubscription>(
+    "SELECT * FROM push_subscriptions WHERE endpoint = $1 LIMIT 1",
+    [endpoint],
+    pool,
+  ).then((row) => (row ? normalizePushSubscription(row as PushSubscription) : undefined));
+}
+
+export async function updateSubscriptionPreferences(
+  endpoint: string,
+  preferences: PushPreferences,
+  pool?: Pool,
+): Promise<PushSubscription | undefined> {
+  return q1<PushSubscription>(
+    `UPDATE push_subscriptions
+     SET preferences = $2,
+         updated_at = NOW()
+     WHERE endpoint = $1
+     RETURNING *`,
+    [endpoint, JSON.stringify(normalizePushPreferences(preferences))],
+    pool,
+  ).then((row) => (row ? normalizePushSubscription(row as PushSubscription) : undefined));
 }
 
 export async function removeSubscription(
@@ -495,6 +580,18 @@ export function getRecentUpdates(limit = 50, pool?: Pool): Promise<DataUpdate[]>
     [limit],
     pool
   );
+}
+
+export async function getLatestUpdateTimestamp(pool?: Pool): Promise<string | null> {
+  const row = await q1<{ occurred_at: string }>(
+    `SELECT occurred_at
+     FROM data_updates
+     ORDER BY occurred_at DESC
+     LIMIT 1`,
+    [],
+    pool,
+  );
+  return row?.occurred_at ?? null;
 }
 
 export async function recordUpdate(

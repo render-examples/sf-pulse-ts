@@ -1,5 +1,10 @@
 import type { Pool } from "pg";
-import { deleteRestaurant, getVisibleRestaurants } from "../../../server/storage.js";
+import {
+  deleteRestaurant,
+  getRestaurantById,
+  getVisibleRestaurants,
+  recordUpdate,
+} from "../../../server/storage.js";
 import { broadcast } from "../../../server/sse.js";
 import { requireCronSecret } from "../../../server/routes/middleware.js";
 import { json } from "./utils.js";
@@ -16,7 +21,19 @@ export async function deleteRestaurantResponse(
   const unauthorized = requireCronSecret(request.headers.get("x-cron-secret"));
   if (unauthorized) return unauthorized;
 
+  const existing = await getRestaurantById(id, pool);
   await deleteRestaurant(id, pool);
-  await broadcast("restaurants", { action: "refresh" });
+
+  let version: string | null = null;
+  if (existing) {
+    version = (await recordUpdate("restaurant", existing.name, "removed", pool)).occurred_at;
+  }
+
+  await broadcast("restaurants", {
+    version,
+    upserted: [],
+    deleted: [id],
+    summary: existing ? `Removed restaurant: ${existing.name}` : undefined,
+  });
   return json({ ok: true });
 }

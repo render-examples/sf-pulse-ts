@@ -82,6 +82,41 @@ describe("push subscription endpoints", () => {
       .send({ endpoint, keys });
     assert.equal(res.status, 200);
     assert.equal(res.body.endpoint, endpoint);
+    assert.deepEqual(res.body.preferences, {
+      neighborhoods: [],
+      cuisines: [],
+      dietary_flags: [],
+      event_categories: [],
+    });
+  });
+
+  it("GET /api/push/subscription returns the saved subscription", async () => {
+    await agent.post("/api/push/subscribe").send({ endpoint, keys });
+    const res = await agent.get(`/api/push/subscription?endpoint=${encodeURIComponent(endpoint)}`);
+    assert.equal(res.status, 200);
+    assert.equal(res.body.endpoint, endpoint);
+  });
+
+  it("POST /api/push/preferences updates saved preferences", async () => {
+    await agent.post("/api/push/subscribe").send({ endpoint, keys });
+    const res = await agent
+      .post("/api/push/preferences")
+      .send({
+        endpoint,
+        preferences: {
+          neighborhoods: ["Mission"],
+          cuisines: ["French"],
+          dietary_flags: ["vegan"],
+          event_categories: ["music"],
+        },
+      });
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body.preferences, {
+      neighborhoods: ["Mission"],
+      cuisines: ["French"],
+      dietary_flags: ["vegan"],
+      event_categories: ["music"],
+    });
   });
 
   it("POST /api/push/subscribe returns 400 when endpoint is missing", async () => {

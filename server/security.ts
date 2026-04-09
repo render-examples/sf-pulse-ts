@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
+import { normalizePushPreferences } from "../shared/catalog.ts";
 
 const TRUSTED_PUSH_HOSTS = new Set([
   "fcm.googleapis.com",
@@ -34,6 +35,13 @@ function isTrustedPushHost(hostname: string): boolean {
   );
 }
 
+const pushPreferencesSchema = z.object({
+  neighborhoods: z.array(z.string().min(1).max(120)).default([]),
+  cuisines: z.array(z.string().min(1).max(160)).default([]),
+  dietary_flags: z.array(z.enum(["gluten_free", "vegan", "vegetarian"])).default([]),
+  event_categories: z.array(z.enum(["art", "community", "festival", "film", "market", "music"])).default([]),
+}).strict().transform((value) => normalizePushPreferences(value));
+
 const pushSubscriptionSchema = z.object({
   endpoint: z
     .string()
@@ -44,6 +52,7 @@ const pushSubscriptionSchema = z.object({
     p256dh: z.string().min(1).max(512),
     auth: z.string().min(1).max(512),
   }).strict(),
+  preferences: pushPreferencesSchema.optional(),
 }).strict();
 
 const unsubscribeSchema = z.object({
@@ -52,6 +61,23 @@ const unsubscribeSchema = z.object({
     .min(1)
     .max(2048)
     .refine(isTrustedPushEndpoint, "Push endpoint must use a trusted web-push provider"),
+}).strict();
+
+const subscriptionLookupSchema = z.object({
+  endpoint: z
+    .string()
+    .min(1)
+    .max(2048)
+    .refine(isTrustedPushEndpoint, "Push endpoint must use a trusted web-push provider"),
+}).strict();
+
+const pushPreferencesUpdateSchema = z.object({
+  endpoint: z
+    .string()
+    .min(1)
+    .max(2048)
+    .refine(isTrustedPushEndpoint, "Push endpoint must use a trusted web-push provider"),
+  preferences: pushPreferencesSchema,
 }).strict();
 
 export function getPublicAppUrl(): string {
@@ -143,4 +169,12 @@ export function parsePushSubscriptionBody(body: unknown) {
 
 export function parsePushUnsubscribeBody(body: unknown) {
   return unsubscribeSchema.safeParse(body);
+}
+
+export function parsePushPreferencesBody(body: unknown) {
+  return pushPreferencesUpdateSchema.safeParse(body);
+}
+
+export function parsePushSubscriptionLookup(value: unknown) {
+  return subscriptionLookupSchema.safeParse(value);
 }

@@ -1,0 +1,176 @@
+---
+import "../../styles/global.css";
+import "../../styles/detail.css";
+import { getVisibleEvents, getVisibleRestaurants, getRestaurantById } from "../../../server/storage.js";
+import { renderDietaryBadges } from "../../../shared/render.ts";
+import { deriveEventNeighborhood } from "../../../shared/catalog.ts";
+
+export const prerender = false;
+
+const restaurantId = Number(Astro.params.id);
+const restaurant = Number.isInteger(restaurantId)
+  ? await getRestaurantById(restaurantId)
+  : undefined;
+
+if (!restaurant) {
+  Astro.response.status = 404;
+}
+
+const relatedRestaurants = restaurant
+  ? (await getVisibleRestaurants())
+      .filter(
+        (item) =>
+          item.id !== restaurant.id &&
+          (item.neighborhood === restaurant.neighborhood || item.cuisine === restaurant.cuisine),
+      )
+      .slice(0, 4)
+  : [];
+
+const nearbyEvents = restaurant
+  ? (await getVisibleEvents())
+      .filter((event) => deriveEventNeighborhood(event) === restaurant.neighborhood)
+      .slice(0, 5)
+  : [];
+
+const mapQuery = restaurant?.address
+  ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(restaurant.address)}`
+  : null;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{restaurant ? `${restaurant.name} — SF Pulse` : "Restaurant not found — SF Pulse"}</title>
+    <meta
+      name="description"
+      content={restaurant
+        ? `${restaurant.name} in ${restaurant.neighborhood}. ${restaurant.cuisine}. ${restaurant.opened_date}.`
+        : "This restaurant could not be found."}
+    />
+  </head>
+  <body>
+    {
+      restaurant ? (
+        <main class="detailPage">
+          <a class="detailBack" href="/#restaurants">← Back to restaurants</a>
+
+          <section class="detailHero">
+            <div class="detailEyebrow">Restaurant detail</div>
+            <h1 class="detailTitle">{restaurant.name}</h1>
+            <p class="detailSummary">
+              {restaurant.highlight_kind === "michelin"
+                ? "Michelin-recognized restaurant tracked by SF Pulse."
+                : "SF Pulse detail page with opening date, neighborhood, source links, and nearby events."}
+            </p>
+
+            <div class="detailMetaGrid">
+              <div class="detailCard">
+                <div class="detailCardLabel">Neighborhood</div>
+                <div class="detailCardValue">{restaurant.neighborhood}</div>
+              </div>
+              <div class="detailCard">
+                <div class="detailCardLabel">Cuisine</div>
+                <div class="detailCardValue">{restaurant.cuisine}</div>
+              </div>
+              <div class="detailCard">
+                <div class="detailCardLabel">Opened</div>
+                <div class="detailCardValue">{restaurant.opened_date}</div>
+              </div>
+              <div class="detailCard">
+                <div class="detailCardLabel">Dietary flags</div>
+                <div class="detailCardValue" set:html={renderDietaryBadges(restaurant.dietary_flags)}></div>
+              </div>
+            </div>
+
+            <div class="detailActions">
+              {restaurant.source_url && (
+                <a class="detailAction" href={restaurant.source_url} target="_blank" rel="noopener noreferrer">
+                  View source
+                </a>
+              )}
+              {restaurant.menu_url && (
+                <a class="detailAction" href={restaurant.menu_url} target="_blank" rel="noopener noreferrer">
+                  View menu
+                </a>
+              )}
+              {mapQuery && (
+                <a class="detailAction" href={mapQuery} target="_blank" rel="noopener noreferrer">
+                  Open map
+                </a>
+              )}
+            </div>
+          </section>
+
+          <div class="detailContent">
+            <section class="detailSection">
+              <h2 class="detailSectionTitle">Tracked metadata</h2>
+              <ul class="detailList">
+                {restaurant.address && (
+                  <li class="detailListItem">
+                    <span>Address</span>
+                    <span class="detailListMeta">{restaurant.address}</span>
+                  </li>
+                )}
+                <li class="detailListItem">
+                  <span>Structured start date</span>
+                  <span class="detailListMeta">{restaurant.opened_start_date ?? "Unknown"}</span>
+                </li>
+                <li class="detailListItem">
+                  <span>Structured end date</span>
+                  <span class="detailListMeta">{restaurant.opened_end_date ?? "Unknown"}</span>
+                </li>
+                <li class="detailListItem">
+                  <span>Upcoming</span>
+                  <span class="detailListMeta">{restaurant.is_upcoming ? "Yes" : "No"}</span>
+                </li>
+              </ul>
+            </section>
+
+            <section class="detailSection">
+              <h2 class="detailSectionTitle">Nearby events</h2>
+              {
+                nearbyEvents.length > 0 ? (
+                  <ul class="detailList">
+                    {nearbyEvents.map((event) => (
+                      <li class="detailListItem">
+                        <a href={`/events/${event.id}`}>{event.title}</a>
+                        <span class="detailListMeta">{event.date}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p class="detailListMeta">No related nearby events are currently tracked.</p>
+                )
+              }
+            </section>
+
+            <section class="detailSection">
+              <h2 class="detailSectionTitle">Related restaurants</h2>
+              {
+                relatedRestaurants.length > 0 ? (
+                  <ul class="detailList">
+                    {relatedRestaurants.map((item) => (
+                      <li class="detailListItem">
+                        <a href={`/restaurants/${item.id}`}>{item.name}</a>
+                        <span class="detailListMeta">{item.neighborhood} · {item.cuisine}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p class="detailListMeta">No related restaurants matched this area or cuisine yet.</p>
+                )
+              }
+            </section>
+          </div>
+        </main>
+      ) : (
+        <main class="detailNotFound">
+          <a class="detailBack" href="/">← Back to SF Pulse</a>
+          <h1 class="detailTitle">Restaurant not found</h1>
+        </main>
+      )
+    }
+  </body>
+</html>

@@ -25,7 +25,9 @@ import {
   clearEvents,
   getSubscriptions,
   addSubscription,
+  getSubscriptionByEndpoint,
   removeSubscription,
+  updateSubscriptionPreferences,
   getRecentUpdates,
   recordUpdate,
   getCronRun,
@@ -344,6 +346,12 @@ describe("storage — push subscriptions", () => {
     const sub = await addSubscription(endpoint, keys, pool);
     assert.equal(sub.endpoint, endpoint);
     assert.ok(sub.id);
+    assert.deepEqual(sub.preferences, {
+      neighborhoods: [],
+      cuisines: [],
+      dietary_flags: [],
+      event_categories: [],
+    });
   });
 
   it("addSubscription is idempotent — upserts on duplicate endpoint", async () => {
@@ -358,6 +366,28 @@ describe("storage — push subscriptions", () => {
     await removeSubscription(endpoint, pool);
     const all = await getSubscriptions(pool);
     assert.ok(!all.find((s) => s.endpoint === endpoint));
+  });
+
+  it("updateSubscriptionPreferences persists normalized preferences", async () => {
+    await addSubscription(endpoint, keys, pool);
+    await updateSubscriptionPreferences(
+      endpoint,
+      {
+        neighborhoods: ["Mission", "Mission"],
+        cuisines: ["French"],
+        dietary_flags: ["vegan"],
+        event_categories: ["music"],
+      },
+      pool,
+    );
+
+    const updated = await getSubscriptionByEndpoint(endpoint, pool);
+    assert.deepEqual(updated?.preferences, {
+      neighborhoods: ["Mission"],
+      cuisines: ["French"],
+      dietary_flags: ["vegan"],
+      event_categories: ["music"],
+    });
   });
 });
 

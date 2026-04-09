@@ -4,7 +4,13 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { Pool } from "pg";
 import { getRestaurantsResponse, deleteRestaurantResponse } from "../src/server/api/restaurants.js";
 import { getEventsResponse, deleteEventResponse } from "../src/server/api/events.js";
-import { getPushVapidKeyResponse, subscribeToPushResponse, unsubscribeFromPushResponse } from "../src/server/api/push.js";
+import {
+  getPushSubscriptionResponse,
+  getPushVapidKeyResponse,
+  subscribeToPushResponse,
+  unsubscribeFromPushResponse,
+  updatePushPreferencesResponse,
+} from "../src/server/api/push.js";
 import { getUpdatesResponse, getLastUpdatedResponse } from "../src/server/api/updates.js";
 import { getEventsStreamResponse } from "../src/server/api/events-stream.js";
 import { getRssResponse } from "../src/server/api/rss.js";
@@ -79,6 +85,14 @@ async function handleRequest(request: Request, pool?: Pool): Promise<Response> {
 
   if (request.method === "POST" && pathname === "/api/push/subscribe") {
     return subscribeToPushResponse(request, pool);
+  }
+
+  if (request.method === "GET" && pathname === "/api/push/subscription") {
+    return getPushSubscriptionResponse(request, pool);
+  }
+
+  if (request.method === "POST" && pathname === "/api/push/preferences") {
+    return updatePushPreferencesResponse(request, pool);
   }
 
   if (request.method === "POST" && pathname === "/api/push/unsubscribe") {

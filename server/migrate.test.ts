@@ -88,6 +88,7 @@ describe("migrate()", () => {
       "0007_structured_dates_and_event_dedupe",
       "0008_restaurant_identity_and_visibility",
       "0009_backfill_structured_dates",
+      "0010_push_subscription_preferences",
     ]);
   });
 
@@ -97,7 +98,7 @@ describe("migrate()", () => {
     await migrate(pool, MIGRATIONS_DIR);
 
     const { rows } = await pool.query("SELECT COUNT(*)::int AS n FROM schema_migrations");
-    assert.equal((rows[0] as { n: number }).n, 9);
+    assert.equal((rows[0] as { n: number }).n, 10);
   });
 
   it("seeds the current San Francisco Michelin-starred restaurants", async () => {

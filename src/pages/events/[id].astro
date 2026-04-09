@@ -1,0 +1,162 @@
+---
+import "../../styles/global.css";
+import "../../styles/detail.css";
+import { getEventById, getVisibleEvents, getVisibleRestaurants } from "../../../server/storage.js";
+import { deriveEventCategory, deriveEventNeighborhood, formatEventCategory } from "../../../shared/catalog.ts";
+
+export const prerender = false;
+
+const eventId = Number(Astro.params.id);
+const event = Number.isInteger(eventId)
+  ? await getEventById(eventId)
+  : undefined;
+
+if (!event) {
+  Astro.response.status = 404;
+}
+
+const category = event ? deriveEventCategory(event) : null;
+const neighborhood = event ? deriveEventNeighborhood(event) : null;
+const relatedEvents = event
+  ? (await getVisibleEvents())
+      .filter((item) => item.id !== event.id && deriveEventNeighborhood(item) === neighborhood)
+      .slice(0, 5)
+  : [];
+const relatedRestaurants = event
+  ? (await getVisibleRestaurants())
+      .filter((restaurant) => restaurant.neighborhood === neighborhood)
+      .slice(0, 5)
+  : [];
+const mapQuery = event
+  ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location)}`
+  : null;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{event ? `${event.title} — SF Pulse` : "Event not found — SF Pulse"}</title>
+    <meta
+      name="description"
+      content={event
+        ? `${event.title} at ${event.location} on ${event.date}.`
+        : "This event could not be found."}
+    />
+  </head>
+  <body>
+    {
+      event ? (
+        <main class="detailPage">
+          <a class="detailBack" href="/#events">← Back to events</a>
+
+          <section class="detailHero">
+            <div class="detailEyebrow">Event detail</div>
+            <h1 class="detailTitle">{event.title}</h1>
+            <p class="detailSummary">
+              {event.description ?? "SF Pulse detail page with location, date metadata, and related neighborhood matches."}
+            </p>
+
+            <div class="detailMetaGrid">
+              <div class="detailCard">
+                <div class="detailCardLabel">Category</div>
+                <div class="detailCardValue">{category ? formatEventCategory(category) : "Unknown"}</div>
+              </div>
+              <div class="detailCard">
+                <div class="detailCardLabel">Neighborhood</div>
+                <div class="detailCardValue">{neighborhood}</div>
+              </div>
+              <div class="detailCard">
+                <div class="detailCardLabel">Date</div>
+                <div class="detailCardValue">{event.date}</div>
+              </div>
+              <div class="detailCard">
+                <div class="detailCardLabel">Time</div>
+                <div class="detailCardValue">{event.time ?? "TBA"}</div>
+              </div>
+            </div>
+
+            <div class="detailActions">
+              {event.source_url && (
+                <a class="detailAction" href={event.source_url} target="_blank" rel="noopener noreferrer">
+                  View source
+                </a>
+              )}
+              {mapQuery && (
+                <a class="detailAction" href={mapQuery} target="_blank" rel="noopener noreferrer">
+                  Open map
+                </a>
+              )}
+            </div>
+          </section>
+
+          <div class="detailContent">
+            <section class="detailSection">
+              <h2 class="detailSectionTitle">Tracked metadata</h2>
+              <ul class="detailList">
+                <li class="detailListItem">
+                  <span>Location</span>
+                  <span class="detailListMeta">{event.location}</span>
+                </li>
+                <li class="detailListItem">
+                  <span>Structured start date</span>
+                  <span class="detailListMeta">{event.start_date ?? "Unknown"}</span>
+                </li>
+                <li class="detailListItem">
+                  <span>Structured end date</span>
+                  <span class="detailListMeta">{event.end_date ?? "Unknown"}</span>
+                </li>
+                <li class="detailListItem">
+                  <span>Upcoming</span>
+                  <span class="detailListMeta">{event.is_upcoming ? "Yes" : "No"}</span>
+                </li>
+              </ul>
+            </section>
+
+            <section class="detailSection">
+              <h2 class="detailSectionTitle">Nearby restaurants</h2>
+              {
+                relatedRestaurants.length > 0 ? (
+                  <ul class="detailList">
+                    {relatedRestaurants.map((restaurant) => (
+                      <li class="detailListItem">
+                        <a href={`/restaurants/${restaurant.id}`}>{restaurant.name}</a>
+                        <span class="detailListMeta">{restaurant.cuisine}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p class="detailListMeta">No nearby restaurants are currently tracked for this area.</p>
+                )
+              }
+            </section>
+
+            <section class="detailSection">
+              <h2 class="detailSectionTitle">More in this area</h2>
+              {
+                relatedEvents.length > 0 ? (
+                  <ul class="detailList">
+                    {relatedEvents.map((item) => (
+                      <li class="detailListItem">
+                        <a href={`/events/${item.id}`}>{item.title}</a>
+                        <span class="detailListMeta">{item.date}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p class="detailListMeta">No additional tracked events matched this neighborhood.</p>
+                )
+              }
+            </section>
+          </div>
+        </main>
+      ) : (
+        <main class="detailNotFound">
+          <a class="detailBack" href="/">← Back to SF Pulse</a>
+          <h1 class="detailTitle">Event not found</h1>
+        </main>
+      )
+    }
+  </body>
+</html>

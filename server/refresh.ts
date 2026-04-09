@@ -7,6 +7,13 @@ import { broadcast } from "./sse.js";
 import { buildEventIdentityKey } from "../shared/event-identity.ts";
 import { buildRestaurantIdentityKey } from "../shared/restaurant-identity.ts";
 import { normalizeDateText } from "../shared/dates.ts";
+import {
+  deriveEventCategory,
+  eventMatchesPushPreferences,
+  formatEventCategory,
+  restaurantMatchesPushPreferences,
+} from "../shared/catalog.ts";
+import { eventDetailHref, restaurantDetailHref } from "../shared/render.ts";
 
 export interface ApplyDiscoveredItemsInput {
   restaurants?: NewRestaurant[];
@@ -23,9 +30,77 @@ export interface ApplyDiscoveredItemsResult {
   };
 }
 
-async function pushToAll(
-  title: string,
-  body: string,
+function describeRestaurant(restaurant: storage.Restaurant): string {
+  return `${restaurant.name} (${restaurant.neighborhood} · ${restaurant.cuisine})`;
+}
+
+function describeEvent(event: storage.Event): string {
+  return `${event.title} (${formatEventCategory(deriveEventCategory(event))} · ${event.date})`;
+}
+
+function buildPushPayload(
+  restaurants: storage.Restaurant[],
+  events: storage.Event[],
+): { title: string; body: string; url: string } {
+  if (restaurants.length === 1 && events.length === 0) {
+    const restaurant = restaurants[0];
+    return {
+      title: restaurant.name,
+      body: `${restaurant.neighborhood} · ${restaurant.cuisine} · ${restaurant.opened_date}`,
+      url: restaurantDetailHref(restaurant.id),
+    };
+  }
+
+  if (restaurants.length === 0 && events.length === 1) {
+    const event = events[0];
+    return {
+      title: event.title,
+      body: `${formatEventCategory(deriveEventCategory(event))} · ${event.date} · ${event.location}`,
+      url: eventDetailHref(event.id),
+    };
+  }
+
+  const lines = [
+    ...restaurants.map(describeRestaurant),
+    ...events.map(describeEvent),
+  ];
+
+  return {
+    title: "SF Pulse update",
+    body: lines.join(" · "),
+    url: "/",
+  };
+}
+
+function summarizeRestaurants(
+  added: storage.Restaurant[],
+  updated: storage.Restaurant[],
+): string | undefined {
+  const lines: string[] = [];
+  if (added.length) {
+    lines.push(
+      `${added.length} new restaurant${added.length > 1 ? "s" : ""}: ${added.map((restaurant) => restaurant.name).join(", ")}`,
+    );
+  }
+  if (updated.length) {
+    lines.push(
+      `${updated.length} updated restaurant${updated.length > 1 ? "s" : ""}: ${updated.map((restaurant) => restaurant.name).join(", ")}`,
+    );
+  }
+  return lines.length ? lines.join(" · ") : undefined;
+}
+
+function summarizeEvents(events: storage.Event[]): string | undefined {
+  if (events.length === 0) {
+    return undefined;
+  }
+
+  return `${events.length} new event${events.length > 1 ? "s" : ""}: ${events.map((event) => event.title).join(", ")}`;
+}
+
+async function pushToInterestedSubscribers(
+  restaurants: storage.Restaurant[],
+  events: storage.Event[],
   pool?: Pool,
 ): Promise<void> {
   try {
@@ -43,10 +118,22 @@ async function pushToAll(
       return;
     }
 
+    const matchingRestaurants = restaurants.filter((restaurant) =>
+      restaurantMatchesPushPreferences(restaurant, sub.preferences),
+    );
+    const matchingEvents = events.filter((event) =>
+      eventMatchesPushPreferences(event, sub.preferences),
+    );
+
+    if (matchingRestaurants.length === 0 && matchingEvents.length === 0) {
+      return;
+    }
+
+    const payload = buildPushPayload(matchingRestaurants, matchingEvents);
     return webpush
       .sendNotification(
         { endpoint: sub.endpoint, keys: sub.keys },
-        JSON.stringify({ title, body }),
+        JSON.stringify(payload),
       )
       .catch(() => {
         storage.removeSubscription(sub.endpoint, pool);
@@ -99,6 +186,10 @@ export async function applyDiscoveredItems(
   const newRestaurants: string[] = [];
   const newEvents: string[] = [];
   const updatedRestaurants: string[] = [];
+  const addedRestaurantRows: storage.Restaurant[] = [];
+  const updatedRestaurantRows: storage.Restaurant[] = [];
+  const addedEventRows: storage.Event[] = [];
+  const versions: string[] = [];
 
   for (const restaurant of restaurants) {
     const identityKey = buildRestaurantIdentityKey(restaurant);
@@ -111,8 +202,10 @@ export async function applyDiscoveredItems(
     const persisted = await storage.addRestaurant(mergedRestaurant, pool);
 
     if (!existing) {
-      await storage.recordUpdate("restaurant", persisted.name, "added", pool);
+      const update = await storage.recordUpdate("restaurant", persisted.name, "added", pool);
+      versions.push(String(update.occurred_at));
       newRestaurants.push(persisted.name);
+      addedRestaurantRows.push(persisted);
       continue;
     }
 
@@ -120,8 +213,10 @@ export async function applyDiscoveredItems(
       continue;
     }
 
-    await storage.recordUpdate("restaurant", persisted.name, "updated", pool);
+    const update = await storage.recordUpdate("restaurant", persisted.name, "updated", pool);
+    versions.push(String(update.occurred_at));
     updatedRestaurants.push(persisted.name);
+    updatedRestaurantRows.push(persisted);
   }
 
   for (const event of events) {
@@ -138,32 +233,40 @@ export async function applyDiscoveredItems(
     }
 
     const added = await storage.addEvent(event, pool);
-    await storage.recordUpdate("event", added.title, "added", pool);
+    const update = await storage.recordUpdate("event", added.title, "added", pool);
+    versions.push(String(update.occurred_at));
     newEvents.push(added.title);
+    addedEventRows.push(added);
   }
 
   if (newRestaurants.length > 0 || updatedRestaurants.length > 0 || newEvents.length > 0) {
-    await broadcast("restaurants", { action: "refresh" });
-    await broadcast("events", { action: "refresh" });
+    const version =
+      versions.sort((left, right) => left.localeCompare(right)).at(-1) ??
+      (await storage.getLatestUpdateTimestamp(pool));
 
-    const lines: string[] = [];
-    if (newRestaurants.length) {
-      lines.push(
-        `${newRestaurants.length} new restaurant${newRestaurants.length > 1 ? "s" : ""}: ${newRestaurants.join(", ")}`,
-      );
-    }
-    if (updatedRestaurants.length) {
-      lines.push(
-        `${updatedRestaurants.length} updated restaurant${updatedRestaurants.length > 1 ? "s" : ""}: ${updatedRestaurants.join(", ")}`,
-      );
-    }
-    if (newEvents.length) {
-      lines.push(
-        `${newEvents.length} new event${newEvents.length > 1 ? "s" : ""}: ${newEvents.join(", ")}`,
-      );
+    if (addedRestaurantRows.length > 0 || updatedRestaurantRows.length > 0) {
+      await broadcast("restaurants", {
+        version,
+        upserted: [...addedRestaurantRows, ...updatedRestaurantRows],
+        deleted: [],
+        summary: summarizeRestaurants(addedRestaurantRows, updatedRestaurantRows),
+      });
     }
 
-    await pushToAll("SF Pulse update", lines.join(" · "), pool);
+    if (addedEventRows.length > 0) {
+      await broadcast("events", {
+        version,
+        upserted: addedEventRows,
+        deleted: [],
+        summary: summarizeEvents(addedEventRows),
+      });
+    }
+
+    await pushToInterestedSubscribers(
+      [...addedRestaurantRows, ...updatedRestaurantRows],
+      addedEventRows,
+      pool,
+    );
   }
 
   return {

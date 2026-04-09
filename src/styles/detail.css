@@ -1,0 +1,156 @@
+.detailPage {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 32px 20px 48px;
+}
+
+.detailBack {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-2);
+  margin-bottom: 18px;
+}
+
+.detailBack:hover {
+  color: var(--accent);
+}
+
+.detailHero {
+  display: grid;
+  gap: 18px;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 4px);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.detailEyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.detailTitle {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 5vw, 3.6rem);
+  line-height: 0.95;
+  color: var(--text);
+}
+
+.detailSummary {
+  font-size: 15px;
+  color: var(--text-2);
+  max-width: 62ch;
+}
+
+.detailMetaGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.detailCard {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  padding: 14px;
+}
+
+.detailCardLabel {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.detailCardValue {
+  margin-top: 6px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.detailActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.detailAction {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.detailAction:hover {
+  text-decoration: none;
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  color: var(--accent);
+}
+
+.detailContent {
+  display: grid;
+  gap: 24px;
+  margin-top: 24px;
+}
+
+.detailSection {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 18px;
+}
+
+.detailSectionTitle {
+  font-family: var(--font-display);
+  font-size: 18px;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+
+.detailList {
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.detailListItem {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.detailListItem:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.detailListMeta {
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.detailNotFound {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 64px 20px;
+}
+
+@media (max-width: 560px) {
+  .detailHero {
+    padding: 20px;
+  }
+}

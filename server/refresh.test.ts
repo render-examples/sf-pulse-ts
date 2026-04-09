@@ -227,4 +227,42 @@ describe("applyDiscoveredItems()", () => {
     const subs = await getSubscriptions(pool);
     assert.ok(!subs.some((sub) => sub.endpoint === "https://attacker.example.com/push"));
   });
+
+  it("sends notifications only to subscriptions whose preferences match", async () => {
+    await clearRestaurants(pool);
+    await clearEvents(pool);
+    await clearSubscriptions();
+    await addSubscription(
+      "https://fcm.googleapis.com/fcm/send/mission-subscription",
+      { p256dh: "p256", auth: "auth" },
+      {
+        neighborhoods: ["Mission"],
+        cuisines: [],
+        dietary_flags: [],
+        event_categories: [],
+      },
+      pool,
+    );
+    await addSubscription(
+      "https://fcm.googleapis.com/fcm/send/sunset-subscription",
+      { p256dh: "p256", auth: "auth" },
+      {
+        neighborhoods: ["Sunset"],
+        cuisines: [],
+        dietary_flags: [],
+        event_categories: [],
+      },
+      pool,
+    );
+
+    const endpoints: string[] = [];
+    webpush.sendNotification = (async (subscription) => {
+      endpoints.push(String(subscription.endpoint));
+      return {} as never;
+    }) as typeof webpush.sendNotification;
+
+    await applyDiscoveredItems({ restaurants: [restaurant], events: [event] }, pool);
+
+    assert.deepEqual(endpoints, ["https://fcm.googleapis.com/fcm/send/mission-subscription"]);
+  });
 });
