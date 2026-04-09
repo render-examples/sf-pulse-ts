@@ -7,6 +7,7 @@ import {
   fetchFuncheap,
   parseCalAcademyPage,
   parseFAMSFPage,
+  parseFuncheapEventPage,
   stripHtml,
 } from "../cron-refresh.js";
 import { readFixture } from "./test-helpers.js";
@@ -251,7 +252,7 @@ describe("fetchFuncheap()", () => {
         events.some(
           (event) =>
             event.title ===
-              "Nike Missile Site Open House &#038; Storytelling | Marin Headlands" &&
+              "Nike Missile Site Open House &amp; Storytelling | Marin Headlands" &&
             event.date === "July 4, 2026",
         ),
       );
@@ -259,12 +260,211 @@ describe("fetchFuncheap()", () => {
         events.some(
           (event) =>
             event.title ===
-              "Free &#8220;Legion of Honor&#8221; Museum Day for Bay Area Residents (Every Saturday)" &&
+              "Free “Legion of Honor” Museum Day for Bay Area Residents (Every Saturday)" &&
             event.date === "May 30, 2026",
         ),
       );
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+});
+
+describe("parseFuncheapEventPage()", () => {
+  it("prefers JSON-LD event metadata for exact date, time, location, and description", () => {
+    const html = `
+      <html>
+        <head>
+          <script type="application/ld+json">
+            {
+              "@context": "http://schema.org",
+              "@type": "Event",
+              "name": "&#8220;Poets of the TL&#8221; Block Party + Free Food (Dodge Alley)",
+              "description": "Submitted by the Event Organizer Celebrate National Poetry Month in the Tenderloin.",
+              "startDate": "2026-04-09T17:00:00-07:00",
+              "endDate": "2026-04-09T20:00:00-07:00",
+              "location": {
+                "@type": "Place",
+                "name": "Dodge Alley",
+                "address": {
+                  "@type": "PostalAddress",
+                  "streetAddress": "Dodge Alley",
+                  "addressLocality": "San Francisco",
+                  "addressRegion": "CA"
+                }
+              }
+            }
+          </script>
+        </head>
+      </html>
+    `;
+
+    assert.deepEqual(
+      parseFuncheapEventPage(
+        html,
+        "https://sf.funcheap.com/poets-tl-block-party-free-food-dodge-alley/",
+      ),
+      {
+        title: "“Poets of the TL” Block Party + Free Food (Dodge Alley)",
+        location: "Dodge Alley, San Francisco, CA",
+        date: "April 9, 2026",
+        time: "5:00 PM – 8:00 PM",
+        description: "Celebrate National Poetry Month in the Tenderloin.",
+        source_url:
+          "https://sf.funcheap.com/poets-tl-block-party-free-food-dodge-alley/",
+      },
+    );
+  });
+
+  it("rejects Bay Area JSON-LD events that are not San Francisco-specific", () => {
+    const html = `
+      <script type="application/ld+json">
+        {
+          "@context": "http://schema.org",
+          "@type": "Event",
+          "name": "&#8220;Healthy Parks Healthy People&#8221;: Monthly Nature Walks | Bay Area",
+          "description": "Bay Area walk series",
+          "startDate": "2026-07-04T10:00:00-07:00",
+          "endDate": "2026-07-04T12:00:00-07:00",
+          "location": {
+            "@type": "Place",
+            "name": "San Francisco Bay Area"
+          }
+        }
+      </script>
+    `;
+
+    assert.equal(
+      parseFuncheapEventPage(
+        html,
+        "https://sf.funcheap.com/healthy-parks-healthy-people-monthly-nature-walks-bay-area-114/",
+      ),
+      null,
+    );
+  });
+
+  it("prefers cleaner page descriptions and collapses same-day local ranges", () => {
+    const html = `
+      <html>
+        <head>
+          <meta
+            property="og:description"
+            content="Spend your Saturday with KQED at a free, festive block party and open house in San Francisco’s Mission District."
+          />
+          <script type="application/ld+json">
+            {
+              "@context": "http://schema.org",
+              "@type": "Event",
+              "name": "SF’s &#8220;KQED Fest&#8221; Free Block Party + Open House (2026)",
+              "description": "@kqedKQED Fest 2026 is a free block party in the Mission. Original Event Description: long duplicated body. Text extracted from provided image: poster text.",
+              "startDate": "2026-05-09T11:00:00-07:00",
+              "endDate": "2026-05-09T18:00:00-07:00",
+              "location": {
+                "@type": "Place",
+                "name": "KQED Headquarters",
+                "address": {
+                  "@type": "PostalAddress",
+                  "streetAddress": "2601 Mariposa St",
+                  "addressLocality": "San Francisco",
+                  "addressRegion": "CA"
+                }
+              }
+            }
+          </script>
+        </head>
+      </html>
+    `;
+
+    assert.deepEqual(
+      parseFuncheapEventPage(
+        html,
+        "https://sf.funcheap.com/sfs-kqed-fest-free-block-party-open-house-2026/",
+      ),
+      {
+        title: "SF’s “KQED Fest” Free Block Party + Open House (2026)",
+        location: "KQED Headquarters, 2601 Mariposa St, San Francisco, CA",
+        date: "May 9, 2026",
+        time: "11:00 AM – 6:00 PM",
+        description:
+          "Spend your Saturday with KQED at a free, festive block party and open house in San Francisco’s Mission District.",
+        source_url:
+          "https://sf.funcheap.com/sfs-kqed-fest-free-block-party-open-house-2026/",
+      },
+    );
+  });
+
+  it("ignores css and location lines in fallback event details", () => {
+    const html = `
+      <html>
+        <body>
+          <h1>SF SPCA Birthday Block Party</h1>
+          <p>Saturday, April 18, 2026 12:00 pm to 5:00 pm</p>
+          <p>Event Details</p>
+          <p>.entry img.fc-img-auto-add { margin: 5px -3px; width: 563px; height: auto; }</p>
+          <p>San Francisco SPCA, 201 Alabama St, San Francisco CA 94103</p>
+          <p>Bring your dog and join the SF SPCA for an afternoon block party with food, activities, and live entertainment.</p>
+          <p>Venue:</p>
+          <p>San Francisco SPCA</p>
+          <p>Address:</p>
+          <p>201 Alabama St, San Francisco, CA 94103</p>
+        </body>
+      </html>
+    `;
+
+    assert.deepEqual(
+      parseFuncheapEventPage(
+        html,
+        "https://sf.funcheap.com/sf-spca-birthday-block-party/",
+      ),
+      {
+        title: "SF SPCA Birthday Block Party",
+        location: "San Francisco SPCA, 201 Alabama St, San Francisco",
+        date: "April 18, 2026",
+        time: "12:00 PM – 5:00 PM",
+        description:
+          "Bring your dog and join the SF SPCA for an afternoon block party with food, activities, and live entertainment.",
+        source_url: "https://sf.funcheap.com/sf-spca-birthday-block-party/",
+      },
+    );
+  });
+
+  it("moves a trailing title date range into the date field", () => {
+    const html = `
+      <script type="application/ld+json">
+        {
+          "@context": "http://schema.org",
+          "@type": "Event",
+          "name": "SF’s National Golden Gate Parks Earth Day + Spring &#8220;Days of Service&#8221; 2026 (April 18-26)",
+          "description": "Volunteer events across the parks.",
+          "startDate": "2026-04-18T09:00:00-07:00",
+          "endDate": "2026-04-18T14:00:00-07:00",
+          "location": {
+            "@type": "Place",
+            "name": "Golden Gate National Recreation Area",
+            "address": {
+              "@type": "PostalAddress",
+              "streetAddress": "201 Fort Mason",
+              "addressLocality": "San Francisco"
+            }
+          }
+        }
+      </script>
+    `;
+
+    assert.deepEqual(
+      parseFuncheapEventPage(
+        html,
+        "https://sf.funcheap.com/sfs-national-golden-gate-parks-earth-day-spring-days-service-2026-april-1826/",
+      ),
+      {
+        title: "SF’s National Golden Gate Parks Earth Day + Spring “Days of Service”",
+        location: "Golden Gate National Recreation Area, 201 Fort Mason, San Francisco",
+        date: "April 18–26, 2026",
+        time: "9:00 AM – 2:00 PM",
+        description: "Volunteer events across the parks.",
+        source_url:
+          "https://sf.funcheap.com/sfs-national-golden-gate-parks-earth-day-spring-days-service-2026-april-1826/",
+      },
+    );
   });
 });

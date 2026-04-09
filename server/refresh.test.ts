@@ -148,6 +148,32 @@ describe("applyDiscoveredItems()", () => {
     assert.deepEqual(result.updated.restaurants, [restaurant.name]);
   });
 
+  it("updates an existing event when incoming data is more specific", async () => {
+    await clearEvents(pool);
+    await applyDiscoveredItems(
+      {
+        events: [
+          {
+            ...event,
+            location: "San Francisco",
+            date: "April 10",
+            description: "The post Route Test Concert appeared first on Funcheap .",
+            source_url: "https://example.com/route-test-concert",
+          },
+        ],
+      },
+      pool,
+    );
+
+    await applyDiscoveredItems({ events: [event] }, pool);
+
+    const events = await getEvents(pool);
+    assert.equal(events.length, 1);
+    assert.equal(events[0].location, event.location);
+    assert.equal(events[0].date, event.date);
+    assert.equal(events[0].description, event.description);
+  });
+
   it("keeps distinct rows when restaurants share a name but not an identity", async () => {
     await clearRestaurants(pool);
 

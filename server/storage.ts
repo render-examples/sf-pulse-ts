@@ -470,6 +470,52 @@ export async function addEvent(
   ).then((row) => normalizeEventDates(row as Event)) as Promise<Event>;
 }
 
+export async function updateEvent(
+  id: number,
+  e: NewEvent,
+  pool?: Pool,
+): Promise<Event> {
+  const structured = deriveStructuredDate(e.date);
+  const normalizedDate = normalizeDateText(e.date);
+  const dedupeKey = buildEventIdentityKey({
+    title: e.title,
+    location: e.location,
+    dateText: normalizedDate,
+  });
+
+  return q1<Event>(
+    `UPDATE events
+     SET title = $1,
+         location = $2,
+         date = $3,
+         start_date = $4,
+         end_date = $5,
+         date_precision = $6,
+         is_upcoming = $7,
+         dedupe_key = $8,
+         time = $9,
+         description = $10,
+         source_url = $11
+     WHERE id = $12
+     RETURNING *`,
+    [
+      e.title,
+      e.location,
+      e.date,
+      structured.startDate,
+      structured.endDate,
+      structured.datePrecision,
+      structured.isUpcoming,
+      dedupeKey,
+      e.time ?? null,
+      e.description ?? null,
+      e.source_url ?? null,
+      id,
+    ],
+    pool,
+  ).then((row) => normalizeEventDates(row as Event)) as Promise<Event>;
+}
+
 export function getEventByDedupeKey(
   dedupeKey: string,
   pool?: Pool,

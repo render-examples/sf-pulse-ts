@@ -101,13 +101,38 @@ describe("parseEaterArticle()", () => {
     const names = results.map((result) => result.name);
 
     assert.ok(names.includes("Ka Kai"));
-    assert.ok(names.includes("Studio Estepan"));
-    assert.ok(names.includes("Tita Becca’s"));
-    assert.ok(names.includes("Causwells"));
+    assert.ok(!names.includes("Studio Estepan"));
+    assert.ok(!names.includes("Tita Becca’s"));
+    assert.ok(!names.includes("Causwells"));
     assert.ok(!names.includes("April 2"));
     assert.ok(!names.includes("Eater SF"));
     assert.ok(!names.includes("Most Popular"));
     assert.ok(!names.includes("The Latest"));
+  });
+
+  it("strips article-title prefixes and keeps the roundup month from the source URL", () => {
+    const html = `
+      <article>
+        <p>INGLESIDE — Tablehopper also has the scoop on Bên Tre opening its third location as of Tuesday, March 24. The restaurant serves Vietnamese dishes and more. 2650 Ocean Avenue, San Francisco</p>
+        <p>CASTRO — Tablehopper caught the news that Parasol at Flore (in the former Cafe Flore space) is now open and serving coffee. 2298 Market Street, San Francisco</p>
+      </article>
+    `;
+
+    const results = parseEaterArticle(
+      html,
+      [],
+      "https://sf.eater.com/restaurant-news/211576/san-francisco-bay-area-restaurant-bar-openings-march-2026",
+      "March 2027",
+    );
+
+    assert.deepEqual(
+      results.map((result) => result.name),
+      ["Bên Tre", "Parasol at Flore"],
+    );
+    assert.deepEqual(
+      results.map((result) => result.opened_date),
+      ["March 2026", "March 2026"],
+    );
   });
 });
 

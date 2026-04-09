@@ -1,3 +1,5 @@
+import { decodeHtmlEntities } from "./html.ts";
+
 const MONTH_NAMES = [
   "January",
   "February",
@@ -62,16 +64,6 @@ function endOfMonthUTC(year: number, month: number): Date {
 function inferYear(month: number, reference: Date): number {
   const referenceYear = reference.getUTCFullYear();
   return month < reference.getUTCMonth() ? referenceYear + 1 : referenceYear;
-}
-
-function decodeHtmlEntities(value: string): string {
-  return value
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&#x27;/gi, "'")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">");
 }
 
 function normalizeRawDate(value: string): string {

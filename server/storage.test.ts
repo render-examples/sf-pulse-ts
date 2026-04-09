@@ -21,6 +21,7 @@ import {
   getVisibleEvents,
   addEvent,
   getEventByDedupeKey,
+  updateEvent,
   deleteEvent,
   clearEvents,
   getSubscriptions,
@@ -314,6 +315,28 @@ describe("storage — events", () => {
     const e = await addEvent(sample, pool);
     const found = await getEventByDedupeKey(e.dedupe_key, pool);
     assert.equal(found?.id, e.id);
+  });
+
+  it("updateEvent recalculates structured dates and dedupe key", async () => {
+    await clearEvents(pool);
+    const created = await addEvent(sample, pool);
+    const updated = await updateEvent(
+      created.id,
+      {
+        ...sample,
+        title: "Test Concert & Afterparty",
+        location: "San Francisco",
+        date: formatDay(shiftUtcDays(reference, 10)),
+      },
+      pool,
+    );
+
+    assert.equal(updated.title, "Test Concert & Afterparty");
+    assert.equal(
+      updated.dedupe_key,
+      `test concert & afterparty|san francisco|${formatDay(shiftUtcDays(reference, 10)).toLowerCase()}`,
+    );
+    assert.equal(updated.start_date, shiftUtcDays(reference, 10).toISOString().slice(0, 10));
   });
 
   it("getVisibleEvents keeps past and upcoming events in timeline order", async () => {

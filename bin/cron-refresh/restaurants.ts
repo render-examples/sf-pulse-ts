@@ -1,5 +1,5 @@
 import { MONTH_NAME_PATTERN } from "./constants.js";
-import { normalizeWhitespace, stripHtml } from "./html.js";
+import { decodeHtmlEntities, normalizeEscapedHtmlText, normalizeWhitespace, stripHtml } from "./html.js";
 import { fetchPageHtml, searchWeb } from "./http.js";
 import { isRecent } from "./recency.js";
 import { fetchRss } from "./rss.js";
@@ -60,6 +60,216 @@ function normalizeRestaurantName(name: string): string {
     .replace(/^[\s"'“”‘’]+|[\s"'“”‘’]+$/g, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizeEaterOpenedDate(
+  openedDate: string,
+  sourceUrl: string | null,
+): string {
+  const monthYearFromUrl = sourceUrl?.match(
+    /(?:^|[-/])(january|february|march|april|may|june|july|august|september|october|november|december)-(20\d{2})(?:$|[-/])/i,
+  );
+  if (monthYearFromUrl) {
+    const monthName =
+      monthYearFromUrl[1][0].toUpperCase() +
+      monthYearFromUrl[1].slice(1).toLowerCase();
+    return `${monthName} ${monthYearFromUrl[2]}`;
+  }
+
+  return normalizeDateText(openedDate);
+}
+
+function alignEaterOpenedDateToSource(
+  openedDate: string,
+  sourceUrl: string | null,
+): string {
+  const monthYearFromUrl = sourceUrl?.match(
+    /(?:^|[-/])(january|february|march|april|may|june|july|august|september|october|november|december)-(20\d{2})(?:$|[-/])/i,
+  );
+  if (!monthYearFromUrl) {
+    return openedDate;
+  }
+
+  const monthName =
+    monthYearFromUrl[1][0].toUpperCase() +
+    monthYearFromUrl[1].slice(1).toLowerCase();
+  const sourceYear = monthYearFromUrl[2];
+  const sourceMonthRe = new RegExp(`^${monthName}\\b`, "i");
+  if (!sourceMonthRe.test(openedDate)) {
+    return openedDate;
+  }
+
+  if (/^\w+\s+\d{1,2},\s*20\d{2}$/i.test(openedDate)) {
+    return openedDate.replace(/\b20\d{2}\b/, sourceYear);
+  }
+
+  if (/^\w+\s+20\d{2}$/i.test(openedDate)) {
+    return `${monthName} ${sourceYear}`;
+  }
+
+  return openedDate;
+}
+
+function formatNeighborhoodLabel(value: string): string {
+  const lowered = value.toLowerCase();
+  const specialCases: Record<string, string> = {
+    "design district": "Design District",
+    "inner richmond": "Inner Richmond",
+    "jackson square": "Jackson Square",
+    "nob hill": "Nob Hill",
+    soma: "SoMa",
+  };
+
+  if (specialCases[lowered]) {
+    return specialCases[lowered];
+  }
+
+  return lowered
+    .split(/\s+/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function extractCuisineFromLine(text: string): string {
+  const normalized = normalizeWhitespace(text);
+  const directCuisineMatch = normalized.match(
+    /\b(?:is|as)\s+(?:a|an)\s+(?:new\s+)?([^.,;]+?)\s+(?:restaurant|bakery|cafe|café|bar|cantina|deli|diner|food hall|spot)\b/i,
+  );
+  if (directCuisineMatch) {
+    return normalizeWhitespace(directCuisineMatch[1]);
+  }
+
+  const servesCuisineMatch = normalized.match(/\bserves\s+([^.,;]+?)\s+dishes\b/i);
+  if (servesCuisineMatch) {
+    return normalizeWhitespace(servesCuisineMatch[1]);
+  }
+
+  const keywordMatches: Array<[RegExp, string]> = [
+    [/\bnorthern thai\b/i, "Northern Thai"],
+    [/\bvietnamese\b/i, "Vietnamese"],
+    [/\bfilipino\b/i, "Filipino"],
+    [/\bbistro\b/i, "Bistro"],
+    [/\bbakery\b/i, "Bakery"],
+    [/\bramen\b/i, "Ramen"],
+    [/\bhot pot\b/i, "Hot pot"],
+    [/\bburgers?\b/i, "Burgers"],
+    [/\bcoffee\b/i, "Coffee"],
+    [/\bmexican\b/i, "Mexican"],
+  ];
+
+  for (const [pattern, value] of keywordMatches) {
+    if (pattern.test(normalized)) {
+      return value;
+    }
+  }
+
+  return "New opening";
+}
+
+function extractEaterNameFromLine(text: string): string | null {
+  const patterns = [
+    /—\s+(.+?)\s+(?:is|are|opens?|opened|opening|debuts?|returns?|lands?)\b/i,
+    /opening of\s+(.+?)(?:,|\s+(?:a|an)\b)/i,
+    /caught the opening of\s+(.+?)(?:,|\s+(?:a|an)\b)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match) continue;
+    const cleaned = normalizeRestaurantName(
+      decodeHtmlEntities(match[1])
+        .replace(
+          /^(?:tablehopper|eater(?: sf)?|hoodline|sfgate|san francisco chronicle|sf chronicle|san francisco standard)\s+(?:also\s+)?has the scoop on\s+/i,
+          "",
+        )
+        .replace(
+          /^(?:tablehopper|eater(?: sf)?|hoodline|sfgate|san francisco chronicle|sf chronicle|san francisco standard)\s+caught the news that\s+/i,
+          "",
+        )
+        .replace(/\s*\((?:in|inside|at|near|formerly)\b[^)]*\)\s*$/i, ""),
+    );
+    return cleaned || null;
+  }
+
+  return null;
+}
+
+function parseEaterExactDate(text: string, fallbackOpenedDate: string): string | null {
+  const exactDateMatch = text.match(
+    new RegExp(`(${MONTH_NAME_PATTERN}\\s+\\d{1,2},\\s+\\d{4})`, "i"),
+  );
+  if (exactDateMatch) {
+    return normalizeDateText(exactDateMatch[0]);
+  }
+
+  const monthDayMatch = text.match(
+    new RegExp(`(${MONTH_NAME_PATTERN}\\s+\\d{1,2})(?!,\\s*\\d{4})`, "i"),
+  );
+  if (!monthDayMatch) {
+    return null;
+  }
+
+  const fallbackYear = fallbackOpenedDate.match(/\b(20\d{2})\b/)?.[1];
+  if (!fallbackYear) {
+    return normalizeDateText(monthDayMatch[0]);
+  }
+
+  return normalizeDateText(`${monthDayMatch[0]}, ${fallbackYear}`);
+}
+
+function parseEaterAddress(text: string): string | null {
+  const match = text.match(/(\d{1,5}[^.]*,\s*San Francisco)\s*$/i);
+  return match ? normalizeWhitespace(match[1]) : null;
+}
+
+function eaterHtmlToLines(html: string): string[] {
+  return html
+    .replace(/<\/(?:p|div|li|h1|h2|h3|h4|h5|h6|br)>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .split(/\n+/)
+    .map((line) => normalizeWhitespace(stripHtml(line)))
+    .filter(Boolean);
+}
+
+function parseEaterRoundupLines(
+  html: string,
+  existing: string[],
+  sourceUrl: string | null,
+  defaultOpenedDate: string,
+): NewRestaurant[] {
+  const results: NewRestaurant[] = [];
+  const seen = new Set(existing);
+
+  for (const line of eaterHtmlToLines(html)) {
+    if (!ROUNDUP_LOCATION_PREFIX_RE.test(line)) continue;
+    if (!OPENING_KEYWORDS.test(line)) continue;
+    if (!/,\s*San Francisco\b/i.test(line)) continue;
+
+    const prefixMatch = line.match(/^([A-Z0-9&/.' -]{2,40})\s+—\s+/);
+    const name = extractEaterNameFromLine(line);
+    const address = parseEaterAddress(line);
+    if (!prefixMatch || !name) continue;
+
+    const dedupeKey = name.toLowerCase();
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+
+    results.push({
+      name: normalizeEscapedHtmlText(name),
+      neighborhood: formatNeighborhoodLabel(prefixMatch[1]),
+      cuisine: extractCuisineFromLine(line),
+      address,
+      opened_date: parseEaterExactDate(line, defaultOpenedDate) ?? defaultOpenedDate,
+      source_url: sourceUrl,
+    });
+  }
+
+  return results;
+}
+
+function isLikelySanFranciscoEaterArticle(html: string): boolean {
+  const text = stripHtml(html).slice(0, 4000);
+  return /,\s*San Francisco\b/i.test(text) || /\bSAN FRANCISCO\b/.test(text);
 }
 
 function addRestaurantCandidate(
@@ -188,6 +398,23 @@ export function parseEaterArticle(
   sourceUrl: string | null,
   openedDate: string,
 ): NewRestaurant[] {
+  const normalizedOpenedDate = normalizeEaterOpenedDate(openedDate, sourceUrl);
+  const roundupResults = parseEaterRoundupLines(
+    html,
+    existing,
+    sourceUrl,
+    normalizedOpenedDate,
+  );
+  if (roundupResults.length > 0) {
+    return roundupResults.map((restaurant) => ({
+      ...restaurant,
+      opened_date: alignEaterOpenedDateToSource(
+        restaurant.opened_date,
+        sourceUrl,
+      ),
+    }));
+  }
+
   const results: NewRestaurant[] = [];
   const headingRe = /<h[234][^>]*>([\s\S]*?)<\/h[234]>/gi;
   let match: RegExpExecArray | null;
@@ -195,14 +422,14 @@ export function parseEaterArticle(
   while ((match = headingRe.exec(html)) !== null) {
     const heading = stripHtml(match[1]);
     if (!isLikelyRestaurantHeading(heading)) continue;
-    addRestaurantCandidate(results, existing, heading, openedDate, sourceUrl);
+    addRestaurantCandidate(results, existing, heading, normalizedOpenedDate, sourceUrl);
   }
 
   extractRoundupParagraphRestaurants(
     html,
     existing,
     results,
-    openedDate,
+    normalizedOpenedDate,
     sourceUrl,
   );
 
@@ -215,22 +442,21 @@ export function parseEaterArticle(
       results,
       existing,
       restaurant.name,
-      openedDate,
+      normalizedOpenedDate,
       sourceUrl,
     );
   }
 
-  return results;
+  return results.map((restaurant) => ({
+    ...restaurant,
+    opened_date: alignEaterOpenedDateToSource(restaurant.opened_date, sourceUrl),
+  }));
 }
 
 export async function fetchEaterSF(
   existing: string[],
 ): Promise<NewRestaurant[]> {
   const items = await fetchRss("https://sf.eater.com/rss/index.xml");
-  const month = new Date().toLocaleString("en-US", {
-    month: "long",
-    year: "numeric",
-  });
   const results: NewRestaurant[] = [];
 
   for (const item of items) {
@@ -242,12 +468,23 @@ export async function fetchEaterSF(
       ...existing,
       ...results.map((restaurant) => restaurant.name.toLowerCase()),
     ];
-    const articleRestaurants = item.link
+    const openedDate = item.pubDate
+      ? new Date(item.pubDate).toLocaleDateString("en-US", {
+          month: "long",
+          year: "numeric",
+          timeZone: "UTC",
+        })
+      : new Date().toLocaleDateString("en-US", {
+          month: "long",
+          year: "numeric",
+        });
+    const articleHtml = item.link ? await fetchPageHtml(item.link) : "";
+    const articleRestaurants = articleHtml
       ? parseEaterArticle(
-          await fetchPageHtml(item.link),
+          articleHtml,
           knownNames,
           item.link || null,
-          month,
+          openedDate,
         )
       : [];
 
@@ -257,12 +494,13 @@ export async function fetchEaterSF(
     }
 
     if (isEaterRoundupArticle(item.title, item.description)) continue;
+    if (articleHtml && !isLikelySanFranciscoEaterArticle(articleHtml)) continue;
 
     const name = item.title
       .replace(/\s*[-–|:,].*$/, "")
       .replace(/\s+(?:Opens?|Opened|Opening|Debuts?|Now Open).*/i, "")
       .trim();
-    addRestaurantCandidate(results, existing, name, month, item.link || null);
+    addRestaurantCandidate(results, existing, name, openedDate, item.link || null);
   }
 
   return results;
@@ -312,16 +550,6 @@ export async function fetchSFist(existing: string[]): Promise<NewRestaurant[]> {
   return results;
 }
 
-function decodeHtmlEntities(value: string): string {
-  return value
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&#x27;/gi, "'")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">");
-}
-
 function michelinPublicationUrl(year: number): string {
   return `https://www.michelin.com/en/publications/products-and-services/michelin-guide-california-${year}-selection`;
 }
@@ -355,6 +583,29 @@ function michelinHtmlToLines(html: string): string[] {
     .split(/\n+/)
     .map((line) => normalizeWhitespace(decodeHtmlEntities(line)))
     .filter(Boolean);
+}
+
+export function parseMichelinGuideRestaurantPage(html: string): Pick<
+  NewRestaurant,
+  "address" | "cuisine"
+> | null {
+  const lines = michelinHtmlToLines(html);
+  const addressIndex = lines.findIndex((line) =>
+    /\bSan Francisco,\s*CA\b/.test(line),
+  );
+  if (addressIndex === -1) {
+    return null;
+  }
+
+  const address = lines[addressIndex];
+  const cuisine = lines[addressIndex + 1]?.match(/^\$+\s*·\s*(.+)$/)
+    ? normalizeWhitespace(lines[addressIndex + 1].replace(/^\$+\s*·\s*/, ""))
+    : null;
+
+  return {
+    address,
+    cuisine: cuisine ?? "Michelin recognition",
+  };
 }
 
 export function parseMichelinSelectionPage(

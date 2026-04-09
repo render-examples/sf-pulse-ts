@@ -1,8 +1,6 @@
 import { applyDiscoveredItems } from "../../server/refresh.js";
 import {
-  getEvents,
   getCronRun,
-  getRestaurants,
   getRestaurantsNeedingMenuCheck,
   markCronRun,
   updateRestaurantMenu,
@@ -39,21 +37,6 @@ function settled<T>(
   return fallback;
 }
 
-async function currentLists(): Promise<{
-  restaurantNames: string[];
-  eventKeys: string[];
-}> {
-  const [restaurants, events] = await Promise.all([
-    getRestaurants(),
-    getEvents(),
-  ]);
-
-  return {
-    restaurantNames: restaurants.map((restaurant) => restaurant.name.toLowerCase()),
-    eventKeys: events.map((event) => event.dedupe_key),
-  };
-}
-
 export function isCronJobDue(
   lastRunAt: string | null | undefined,
   intervalMs: number,
@@ -67,8 +50,6 @@ export function isCronJobDue(
 
 export async function main(): Promise<void> {
   console.info(`[cron] SF Pulse refresh — ${new Date().toISOString()}`);
-
-  const lists = await currentLists();
   const monthYear = new Date().toLocaleString("en-US", {
     month: "long",
     year: "numeric",
@@ -77,8 +58,8 @@ export async function main(): Promise<void> {
   console.info("[cron] fetching restaurant sources...");
   const [eaterResult, sfistResult, ddgRestaurantsResult] =
     await Promise.allSettled([
-      fetchEaterSF(lists.restaurantNames),
-      fetchSFist(lists.restaurantNames),
+      fetchEaterSF([]),
+      fetchSFist([]),
       searchWeb(`new restaurant openings San Francisco ${monthYear}`),
     ]);
 
@@ -86,10 +67,10 @@ export async function main(): Promise<void> {
   const sfistItems = settled(sfistResult, "SFist", [] as NewRestaurant[]);
   const ddgRestaurants = extractRestaurants(
     stripHtml(settled(ddgRestaurantsResult, "DuckDuckGo (restaurants)", "")),
-    lists.restaurantNames,
+    [],
   );
 
-  const seenNames = new Set<string>(lists.restaurantNames);
+  const seenNames = new Set<string>();
   const newRestaurants: NewRestaurant[] = [];
   for (const restaurant of [...eaterItems, ...sfistItems, ...ddgRestaurants]) {
     const key = restaurant.name.toLowerCase();
@@ -120,9 +101,9 @@ export async function main(): Promise<void> {
   console.info("[cron] fetching event sources...");
   const [funcheapResult, famsfResult, calAcademyResult, ddgEventsResult] =
     await Promise.allSettled([
-      fetchFuncheap(lists.eventKeys),
-      fetchFAMSF(lists.eventKeys),
-      fetchCalAcademy(lists.eventKeys),
+      fetchFuncheap([]),
+      fetchFAMSF([]),
+      fetchCalAcademy([]),
       searchWeb(`San Francisco events Golden Gate Park concerts ${monthYear}`),
     ]);
 
@@ -135,10 +116,10 @@ export async function main(): Promise<void> {
   );
   const ddgEvents = extractEvents(
     stripHtml(settled(ddgEventsResult, "DuckDuckGo (events)", "")),
-    lists.eventKeys,
+    [],
   );
 
-  const seenKeys = new Set<string>(lists.eventKeys);
+  const seenKeys = new Set<string>();
   const newEvents: NewEvent[] = [];
   for (const event of [
     ...funcheapItems,
