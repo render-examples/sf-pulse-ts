@@ -1,5 +1,10 @@
 import { buildTimeline } from "./timeline.ts";
-import { DIETARY_FLAG_DEFINITIONS, deriveEventCategory, formatEventCategory } from "./catalog.ts";
+import {
+  DIETARY_FLAG_DEFINITIONS,
+  deriveEventCategory,
+  deriveEventNeighborhood,
+  formatEventCategory,
+} from "./catalog.ts";
 import type { DietaryFlags, Restaurant, SFEvent } from "./types.ts";
 
 export function escapeHtml(value: string): string {
@@ -136,7 +141,7 @@ export function renderEventTableBody(events: SFEvent[]): string {
       if (row.kind === "today") {
         return `
           <tr class="todayRow" data-today-row="events">
-            <td colspan="4" class="todayCell">
+            <td colspan="5" class="todayCell">
               <span class="todayLabel">Today</span>
             </td>
           </tr>
@@ -145,6 +150,7 @@ export function renderEventTableBody(events: SFEvent[]): string {
 
       const event = row.item;
       const category = deriveEventCategory(event);
+      const neighborhood = deriveEventNeighborhood(event);
       return `
         <tr data-row-id="${event.id}">
           <td>
@@ -152,22 +158,25 @@ export function renderEventTableBody(events: SFEvent[]): string {
               <a class="detailLink" href="${eventDetailHref(event.id)}">${escapeHtml(event.title)}</a>
             </div>
             ${
+              event.location
+                ? `<div class="cellSub cellAddress">${pinIcon()} ${escapeHtml(event.location)}</div>`
+                : ""
+            }
+            ${
               event.description
                 ? `<div class="cellSub">${escapeHtml(event.description)}</div>`
                 : ""
             }
-            <div class="cellMeta">
-              <span class="badge">${escapeHtml(formatEventCategory(category))}</span>
-            </div>
             ${
               event.source_url
                 ? `<a href="${escapeHtml(event.source_url)}" target="_blank" rel="noopener noreferrer" class="cellSource">Source ${externalLinkIcon()}</a>`
                 : ""
             }
           </td>
-          <td class="colNeighborhood tableMuted tableDate">${escapeHtml(event.location)}</td>
-          <td class="tableMuted tableDate">${escapeHtml(event.date)}</td>
+          <td class="colNeighborhood"><span class="badge">${escapeHtml(neighborhood)}</span></td>
+          <td class="colCuisine tableMuted">${escapeHtml(formatEventCategory(category))}</td>
           <td class="colTime tableMuted tableDate">${escapeHtml(event.time ?? "—")}</td>
+          <td class="tableMuted tableDate">${escapeHtml(event.date)}</td>
         </tr>
       `;
     })

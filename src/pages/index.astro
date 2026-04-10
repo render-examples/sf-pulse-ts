@@ -262,9 +262,10 @@ const eventCategoryOptions = getEventCategoryOptions(data.events);
                 <thead>
                   <tr>
                     <th>Event</th>
-                    <th class="colNeighborhood">Location</th>
-                    <th>Date</th>
+                    <th class="colNeighborhood">Neighborhood</th>
+                    <th class="colCuisine">Category</th>
                     <th class="colTime">Time</th>
+                    <th>Date</th>
                   </tr>
                 </thead>
                 <tbody data-table-body="events" set:html={renderEventTableBody(filteredEvents)}></tbody>
