@@ -4,6 +4,7 @@ import { fetchPageHtml, searchWeb } from "./http.js";
 import { isRecent } from "./recency.js";
 import { fetchRss } from "./rss.js";
 import { normalizeDateText } from "../../shared/dates.ts";
+import { isBlockedRestaurantName } from "../../shared/restaurant-blocklist.ts";
 import type { NewRestaurant } from "./types.js";
 
 const OPENING_KEYWORDS =
@@ -38,6 +39,7 @@ export function extractRestaurants(
   while ((match = pattern.exec(text)) !== null) {
     const name = match[1].trim();
     if (
+      !isBlockedRestaurantName(name) &&
       !existing.includes(name.toLowerCase()) &&
       !results.find((restaurant) => restaurant.name === name)
     ) {
@@ -281,6 +283,7 @@ function addRestaurantCandidate(
 ): void {
   const normalized = normalizeRestaurantName(name);
   if (normalized.length < 3) return;
+  if (isBlockedRestaurantName(normalized)) return;
   if (existing.includes(normalized.toLowerCase())) return;
   if (
     results.find((restaurant) => restaurant.name.toLowerCase() === normalized.toLowerCase())
@@ -310,6 +313,7 @@ function isLikelyRestaurantHeading(text: string): boolean {
   if (!/\p{L}/u.test(normalized)) return false;
   if (normalized.length < 3 || normalized.length > 60) return false;
   if (normalized.split(/\s+/).length > 8) return false;
+  if (isBlockedRestaurantName(normalized)) return false;
   if (GENERIC_RESTAURANT_TITLE_RE.test(normalized)) return false;
   if (DATE_ONLY_RESTAURANT_TITLE_RE.test(normalized)) return false;
   return /\p{Lu}/u.test(normalized);

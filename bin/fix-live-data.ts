@@ -27,9 +27,13 @@ import {
   normalizeEscapedHtmlText,
   normalizeWhitespace,
 } from '../shared/html.ts'
+import { isBlockedRestaurantName } from '../shared/restaurant-blocklist.ts'
 
 const APPLY = process.argv.includes('--apply')
 const ALLOW_DELETE = process.argv.includes('--allow-delete')
+const ONLY_BLOCKED_RESTAURANTS = process.argv.includes(
+  '--blocked-restaurants-only',
+)
 
 const DATE_PRECISION_SCORE: Record<DatePrecision, number> = {
   unknown: 0,
@@ -234,6 +238,13 @@ type EventDecision =
 async function enrichRestaurant(
   restaurant: Restaurant,
 ): Promise<RestaurantDecision> {
+  if (isBlockedRestaurantName(restaurant.name)) {
+    return {
+      action: 'delete',
+      reason: 'Blocked non-restaurant label',
+    }
+  }
+
   let next = mergeRestaurant(restaurant, {})
   const sourceUrl = restaurant.source_url ?? ''
 
@@ -320,164 +331,172 @@ async function main(): Promise<void> {
   const events = await getEvents(pool)
 
   const restaurantUpdates = new Map<number, NewRestaurant>()
-  const restaurantDeletes = new Map<number, string>()
+  const restaurantDeletes = new Map<number, string>(
+    ONLY_BLOCKED_RESTAURANTS
+      ? restaurants
+          .filter((restaurant) => isBlockedRestaurantName(restaurant.name))
+          .map((restaurant) => [restaurant.id, 'Blocked non-restaurant label'])
+      : [],
+  )
   const eventUpdates = new Map<number, NewEvent>()
   const eventDeletes = new Map<number, string>()
 
-  for (const restaurant of restaurants) {
-    const decision = await enrichRestaurant(restaurant)
-    if (decision.action === 'delete') {
-      restaurantDeletes.set(restaurant.id, decision.reason)
-      continue
+  if (!ONLY_BLOCKED_RESTAURANTS) {
+    for (const restaurant of restaurants) {
+      const decision = await enrichRestaurant(restaurant)
+      if (decision.action === 'delete') {
+        restaurantDeletes.set(restaurant.id, decision.reason)
+        continue
+      }
+
+      const next = decision.next
+      if (
+        restaurant.name !== next.name ||
+        restaurant.neighborhood !== next.neighborhood ||
+        restaurant.cuisine !== next.cuisine ||
+        restaurant.address !== (next.address ?? null) ||
+        normalizeRestaurantOpenedDateText(restaurant.opened_date) !==
+          next.opened_date
+      ) {
+        restaurantUpdates.set(restaurant.id, next)
+      }
     }
 
-    const next = decision.next
-    if (
-      restaurant.name !== next.name ||
-      restaurant.neighborhood !== next.neighborhood ||
-      restaurant.cuisine !== next.cuisine ||
-      restaurant.address !== (next.address ?? null) ||
-      normalizeRestaurantOpenedDateText(restaurant.opened_date) !==
-        next.opened_date
-    ) {
-      restaurantUpdates.set(restaurant.id, next)
+    const restaurantRows = restaurants.map((restaurant) => ({
+      id: restaurant.id,
+      row: restaurantUpdates.get(restaurant.id)
+        ? { ...restaurant, ...restaurantUpdates.get(restaurant.id)! }
+        : restaurant,
+    }))
+
+    for (const left of restaurantRows) {
+      if (restaurantDeletes.has(left.id)) continue
+      for (const right of restaurantRows) {
+        if (left.id >= right.id || restaurantDeletes.has(right.id)) continue
+        if (!similarRestaurantIdentity(left.row, right.row)) continue
+
+        const keepLeft =
+          restaurantCompletenessScore(left.row) >=
+          restaurantCompletenessScore(right.row)
+        const keeper = keepLeft ? left : right
+        const loser = keepLeft ? right : left
+        restaurantDeletes.set(
+          loser.id,
+          'Duplicate restaurant after normalization',
+        )
+        restaurantUpdates.set(
+          keeper.id,
+          mergeRestaurant(keeper.row, {
+            name:
+              keeper.row.name.length >= loser.row.name.length
+                ? keeper.row.name
+                : loser.row.name,
+            neighborhood:
+              keeper.row.neighborhood.toLowerCase() === 'san francisco'
+                ? loser.row.neighborhood
+                : keeper.row.neighborhood,
+            cuisine:
+              keeper.row.cuisine.toLowerCase() === 'new opening'
+                ? loser.row.cuisine
+                : keeper.row.cuisine,
+            address: keeper.row.address ?? loser.row.address,
+            opened_date:
+              DATE_PRECISION_SCORE[
+                getDatePrecision(
+                  stripRestaurantDateQualifier(keeper.row.opened_date),
+                )
+              ] >=
+              DATE_PRECISION_SCORE[
+                getDatePrecision(
+                  stripRestaurantDateQualifier(loser.row.opened_date),
+                )
+              ]
+                ? keeper.row.opened_date
+                : loser.row.opened_date,
+            source_url: keeper.row.source_url ?? loser.row.source_url,
+            highlight_kind: keeper.row.highlight_kind,
+          }),
+        )
+      }
     }
-  }
 
-  const restaurantRows = restaurants.map((restaurant) => ({
-    id: restaurant.id,
-    row: restaurantUpdates.get(restaurant.id)
-      ? { ...restaurant, ...restaurantUpdates.get(restaurant.id)! }
-      : restaurant,
-  }))
+    for (const id of restaurantDeletes.keys()) {
+      restaurantUpdates.delete(id)
+    }
 
-  for (const left of restaurantRows) {
-    if (restaurantDeletes.has(left.id)) continue
-    for (const right of restaurantRows) {
-      if (left.id >= right.id || restaurantDeletes.has(right.id)) continue
-      if (!similarRestaurantIdentity(left.row, right.row)) continue
+    for (const event of events) {
+      const decision = await enrichEvent(event)
+      if (decision.action === 'delete') {
+        eventDeletes.set(event.id, decision.reason)
+        continue
+      }
 
-      const keepLeft =
-        restaurantCompletenessScore(left.row) >=
-        restaurantCompletenessScore(right.row)
-      const keeper = keepLeft ? left : right
-      const loser = keepLeft ? right : left
-      restaurantDeletes.set(
-        loser.id,
-        'Duplicate restaurant after normalization',
+      const next = decision.next
+      if (
+        event.title !== next.title ||
+        event.location !== next.location ||
+        normalizeDateText(event.date) !== next.date ||
+        event.time !== (next.time ?? null) ||
+        (stripFuncheapAttribution(event.description) ?? null) !==
+          (next.description ?? null)
+      ) {
+        eventUpdates.set(event.id, next)
+      }
+    }
+
+    const candidateEvents = events
+      .filter((event) => !eventDeletes.has(event.id))
+      .map((event) => ({
+        id: event.id,
+        row: eventUpdates.get(event.id)
+          ? { ...event, ...eventUpdates.get(event.id)! }
+          : event,
+      }))
+
+    const eventGroups = new Map<string, typeof candidateEvents>()
+    for (const event of candidateEvents) {
+      const key = desiredEventKey(event.row)
+      eventGroups.set(key, [...(eventGroups.get(key) ?? []), event])
+    }
+
+    for (const group of eventGroups.values()) {
+      if (group.length < 2) continue
+      group.sort(
+        (left, right) =>
+          eventCompletenessScore(right.row) -
+            eventCompletenessScore(left.row) || left.id - right.id,
       )
-      restaurantUpdates.set(
+      const keeper = group[0]
+      for (const duplicate of group.slice(1)) {
+        eventDeletes.set(duplicate.id, 'Duplicate event after normalization')
+      }
+      eventUpdates.set(
         keeper.id,
-        mergeRestaurant(keeper.row, {
-          name:
-            keeper.row.name.length >= loser.row.name.length
-              ? keeper.row.name
-              : loser.row.name,
-          neighborhood:
-            keeper.row.neighborhood.toLowerCase() === 'san francisco'
-              ? loser.row.neighborhood
-              : keeper.row.neighborhood,
-          cuisine:
-            keeper.row.cuisine.toLowerCase() === 'new opening'
-              ? loser.row.cuisine
-              : keeper.row.cuisine,
-          address: keeper.row.address ?? loser.row.address,
-          opened_date:
-            DATE_PRECISION_SCORE[
-              getDatePrecision(
-                stripRestaurantDateQualifier(keeper.row.opened_date),
-              )
-            ] >=
-            DATE_PRECISION_SCORE[
-              getDatePrecision(
-                stripRestaurantDateQualifier(loser.row.opened_date),
-              )
-            ]
-              ? keeper.row.opened_date
-              : loser.row.opened_date,
-          source_url: keeper.row.source_url ?? loser.row.source_url,
-          highlight_kind: keeper.row.highlight_kind,
+        mergeEvent(keeper.row, {
+          location:
+            keeper.row.location.toLowerCase() === 'san francisco'
+              ? group.find(
+                  (candidate) =>
+                    candidate.row.location.toLowerCase() !== 'san francisco',
+                )?.row.location
+              : keeper.row.location,
+          description:
+            group
+              .map((candidate) => candidate.row.description)
+              .filter((value): value is string => Boolean(value))
+              .sort((left, right) => right.length - left.length)[0] ??
+            keeper.row.description,
+          time:
+            keeper.row.time ??
+            group.find((candidate) => candidate.row.time)?.row.time ??
+            null,
         }),
       )
     }
-  }
 
-  for (const id of restaurantDeletes.keys()) {
-    restaurantUpdates.delete(id)
-  }
-
-  for (const event of events) {
-    const decision = await enrichEvent(event)
-    if (decision.action === 'delete') {
-      eventDeletes.set(event.id, decision.reason)
-      continue
+    for (const id of eventDeletes.keys()) {
+      eventUpdates.delete(id)
     }
-
-    const next = decision.next
-    if (
-      event.title !== next.title ||
-      event.location !== next.location ||
-      normalizeDateText(event.date) !== next.date ||
-      event.time !== (next.time ?? null) ||
-      (stripFuncheapAttribution(event.description) ?? null) !==
-        (next.description ?? null)
-    ) {
-      eventUpdates.set(event.id, next)
-    }
-  }
-
-  const candidateEvents = events
-    .filter((event) => !eventDeletes.has(event.id))
-    .map((event) => ({
-      id: event.id,
-      row: eventUpdates.get(event.id)
-        ? { ...event, ...eventUpdates.get(event.id)! }
-        : event,
-    }))
-
-  const eventGroups = new Map<string, typeof candidateEvents>()
-  for (const event of candidateEvents) {
-    const key = desiredEventKey(event.row)
-    eventGroups.set(key, [...(eventGroups.get(key) ?? []), event])
-  }
-
-  for (const group of eventGroups.values()) {
-    if (group.length < 2) continue
-    group.sort(
-      (left, right) =>
-        eventCompletenessScore(right.row) - eventCompletenessScore(left.row) ||
-        left.id - right.id,
-    )
-    const keeper = group[0]
-    for (const duplicate of group.slice(1)) {
-      eventDeletes.set(duplicate.id, 'Duplicate event after normalization')
-    }
-    eventUpdates.set(
-      keeper.id,
-      mergeEvent(keeper.row, {
-        location:
-          keeper.row.location.toLowerCase() === 'san francisco'
-            ? group.find(
-                (candidate) =>
-                  candidate.row.location.toLowerCase() !== 'san francisco',
-              )?.row.location
-            : keeper.row.location,
-        description:
-          group
-            .map((candidate) => candidate.row.description)
-            .filter((value): value is string => Boolean(value))
-            .sort((left, right) => right.length - left.length)[0] ??
-          keeper.row.description,
-        time:
-          keeper.row.time ??
-          group.find((candidate) => candidate.row.time)?.row.time ??
-          null,
-      }),
-    )
-  }
-
-  for (const id of eventDeletes.keys()) {
-    eventUpdates.delete(id)
   }
 
   const summary = {

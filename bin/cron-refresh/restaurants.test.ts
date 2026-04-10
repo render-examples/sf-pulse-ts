@@ -110,6 +110,33 @@ describe("parseEaterArticle()", () => {
     assert.ok(!names.includes("The Latest"));
   });
 
+  it("ignores non-restaurant callout headings", () => {
+    const html = `
+      <article>
+        <h2>Insider tip</h2>
+        <p>Do not ingest this callout label.</p>
+        <h2>Take note</h2>
+        <p>Do not ingest this one either.</p>
+        <h2>What to order</h2>
+        <p>This is also editorial chrome.</p>
+        <h2>Alpha Cafe</h2>
+        <p>Alpha Cafe opens in the Mission this week.</p>
+      </article>
+    `;
+
+    const results = parseEaterArticle(
+      html,
+      [],
+      "https://sf.eater.com/article/alpha",
+      "April 2026",
+    );
+
+    assert.deepEqual(
+      results.map((result) => result.name),
+      ["Alpha Cafe"],
+    );
+  });
+
   it("strips article-title prefixes and keeps the roundup month from the source URL", () => {
     const html = `
       <article>

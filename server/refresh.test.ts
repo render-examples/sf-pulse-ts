@@ -123,6 +123,25 @@ describe("applyDiscoveredItems()", () => {
     assert.deepEqual(result.updated, { restaurants: [] });
   });
 
+  it("ignores blocked restaurant names", async () => {
+    await clearRestaurants(pool);
+
+    const result = await applyDiscoveredItems(
+      {
+        restaurants: [
+          {
+            ...restaurant,
+            name: "Insider tip",
+          },
+        ],
+      },
+      pool,
+    );
+
+    assert.deepEqual(result.added.restaurants, []);
+    assert.equal((await getRestaurants(pool)).length, 0);
+  });
+
   it("updates an existing restaurant when Michelin recognition arrives", async () => {
     await clearRestaurants(pool);
     await applyDiscoveredItems({ restaurants: [restaurant] }, pool);

@@ -6,6 +6,7 @@ import { getVapidConfig, isTrustedPushEndpoint } from "./security.js";
 import { broadcast } from "./sse.js";
 import { buildEventIdentityKey } from "../shared/event-identity.ts";
 import { buildRestaurantIdentityKey } from "../shared/restaurant-identity.ts";
+import { isBlockedRestaurantName } from "../shared/restaurant-blocklist.ts";
 import { getDatePrecision, normalizeDateText, type DatePrecision } from "../shared/dates.ts";
 import {
   deriveEventCategory,
@@ -484,6 +485,10 @@ export async function applyDiscoveredItems(
   const versions: string[] = [];
 
   for (const restaurant of restaurants) {
+    if (isBlockedRestaurantName(restaurant.name)) {
+      continue;
+    }
+
     const existing = findMatchingRestaurant(restaurant, existingRestaurants);
     const mergedRestaurant = mergeRestaurantForUpsert(restaurant, existing);
 
