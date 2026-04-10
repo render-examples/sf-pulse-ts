@@ -187,13 +187,22 @@
 
 .main {
   display: grid;
-  grid-template-rows: auto 1fr auto auto;
+  grid-template-rows: auto 1fr auto;
   max-width: 960px;
   width: 100%;
   margin: 0 auto;
   padding: 24px 20px 0;
   min-height: 0;
   overflow: hidden;
+}
+
+.tabsRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
 }
 
 .tabs {
@@ -203,7 +212,26 @@
   padding: 4px;
   border-radius: calc(var(--radius) + 2px);
   width: fit-content;
-  margin-bottom: 24px;
+}
+
+.tabsClock {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.tabsClock svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .tab {
@@ -589,26 +617,6 @@ td {
   border-top: 1px solid var(--border);
   font-size: 12px;
   color: var(--text-2);
-  display: flex;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.footerClock {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.footerClock svg {
-  width: 14px;
-  height: 14px;
-  stroke: currentColor;
-  fill: none;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
 }
 
 .pushBanner {
@@ -685,6 +693,11 @@ td {
 @media (max-width: 560px) {
   .siteSubtitle {
     display: none;
+  }
+
+  .tabsClock {
+    width: 100%;
+    justify-content: flex-end;
   }
 
   .filter {
