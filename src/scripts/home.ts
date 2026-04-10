@@ -47,7 +47,6 @@ const eventsCount = document.querySelector<HTMLElement>('[data-count="events"]')
 const pushButton = document.querySelector<HTMLButtonElement>("[data-push-button]");
 const pushPanel = document.querySelector<HTMLElement>("[data-push-panel]");
 const pushBanner = document.querySelector<HTMLElement>("[data-push-banner]");
-const pushClose = document.querySelector<HTMLButtonElement>("[data-push-close]");
 const pushSave = document.querySelector<HTMLButtonElement>("[data-push-save]");
 const pushDisable = document.querySelector<HTMLButtonElement>("[data-push-disable]");
 const pushReset = document.querySelector<HTMLButtonElement>("[data-push-reset]");
@@ -61,6 +60,7 @@ let pushSubscribed = false;
 let pushPanelOpen = false;
 let pushVapidKey: string | null = null;
 let pushEndpoint: string | null = null;
+let eventDescriptionFrame = 0;
 
 function formatLastUpdated(value: string | null): string | null {
   if (!value) return null;
@@ -133,6 +133,132 @@ function scheduleActiveTodayScroll(waitForLayout = false): void {
   scheduleTodayScroll(activeTimelineKind(), waitForLayout);
 }
 
+function isEventsSectionVisible(): boolean {
+  return window.location.hash === "#events";
+}
+
+type EventDescriptionHeights = {
+  collapsed: number;
+  expanded: number;
+};
+
+function measureEventDescriptionHeights(
+  description: HTMLElement,
+  text: HTMLElement,
+): EventDescriptionHeights {
+  const previousExpanded = description.dataset.expanded;
+  const previousAnimating = description.dataset.animating;
+  const previousClampReady = description.dataset.clampReady;
+  const previousMaxHeight = text.style.maxHeight;
+
+  delete description.dataset.clampReady;
+  delete description.dataset.animating;
+  text.style.maxHeight = "none";
+
+  description.dataset.expanded = "false";
+  const collapsed = text.getBoundingClientRect().height;
+
+  description.dataset.animating = "true";
+  description.dataset.expanded = "true";
+  const expanded = text.scrollHeight;
+
+  if (previousExpanded === undefined) {
+    delete description.dataset.expanded;
+  } else {
+    description.dataset.expanded = previousExpanded;
+  }
+
+  if (previousAnimating === undefined) {
+    delete description.dataset.animating;
+  } else {
+    description.dataset.animating = previousAnimating;
+  }
+
+  if (previousClampReady === undefined) {
+    delete description.dataset.clampReady;
+  } else {
+    description.dataset.clampReady = previousClampReady;
+  }
+
+  text.style.maxHeight = previousMaxHeight;
+  return { collapsed, expanded };
+}
+
+function setEventDescriptionMeasurements(
+  description: HTMLElement,
+  text: HTMLElement,
+): EventDescriptionHeights {
+  const heights = measureEventDescriptionHeights(description, text);
+  text.style.setProperty("--event-description-collapsed-height", `${heights.collapsed}px`);
+  text.style.setProperty("--event-description-expanded-height", `${heights.expanded}px`);
+  return heights;
+}
+
+function syncEventDescriptionToggles(): void {
+  if (!eventsBody || !isEventsSectionVisible()) return;
+
+  const descriptions = Array.from(eventsBody.querySelectorAll<HTMLElement>("[data-event-description]"));
+  for (const description of descriptions) {
+    const text = description.querySelector<HTMLElement>("[data-event-description-text]");
+    const toggle = description.querySelector<HTMLButtonElement>("[data-event-description-toggle]");
+    if (!text || !toggle) continue;
+
+    const wasExpanded = description.dataset.expanded === "true";
+    const heights = setEventDescriptionMeasurements(description, text);
+    const isOverflowing = heights.expanded > heights.collapsed + 1;
+    const isExpanded = wasExpanded && isOverflowing;
+
+    description.dataset.expanded = isExpanded ? "true" : "false";
+    description.dataset.clampReady = "true";
+    text.style.maxHeight = isExpanded ? `${heights.expanded}px` : `${heights.collapsed}px`;
+    toggle.hidden = !isOverflowing;
+    toggle.textContent = isExpanded ? "less" : "more";
+    toggle.setAttribute("aria-expanded", isExpanded ? "true" : "false");
+  }
+}
+
+function scheduleEventDescriptionToggles(): void {
+  if (eventDescriptionFrame) {
+    window.cancelAnimationFrame(eventDescriptionFrame);
+  }
+  eventDescriptionFrame = window.requestAnimationFrame(() => {
+    eventDescriptionFrame = 0;
+    syncEventDescriptionToggles();
+  });
+}
+
+function setEventDescriptionExpanded(
+  description: HTMLElement,
+  text: HTMLElement,
+  toggle: HTMLButtonElement,
+  nextExpanded: boolean,
+): void {
+  const heights = setEventDescriptionMeasurements(description, text);
+  description.dataset.clampReady = "true";
+  description.dataset.animating = "true";
+  description.dataset.expanded = nextExpanded ? "false" : "true";
+  text.style.maxHeight = nextExpanded ? `${heights.collapsed}px` : `${heights.expanded}px`;
+
+  window.requestAnimationFrame(() => {
+    description.dataset.expanded = nextExpanded ? "true" : "false";
+    text.style.maxHeight = nextExpanded ? `${heights.expanded}px` : `${heights.collapsed}px`;
+    toggle.textContent = nextExpanded ? "less" : "more";
+    toggle.setAttribute("aria-expanded", nextExpanded ? "true" : "false");
+  });
+
+  const finishAnimation = (event: TransitionEvent): void => {
+    if (event.target !== text || event.propertyName !== "max-height") return;
+    delete description.dataset.animating;
+    text.removeEventListener("transitionend", finishAnimation);
+  };
+
+  text.addEventListener("transitionend", finishAnimation);
+  window.setTimeout(() => {
+    delete description.dataset.animating;
+    text.removeEventListener("transitionend", finishAnimation);
+  }, 200);
+}
+
 function syncFilterControls(kind: FilterKind): void {
   const filters = state.filters[kind];
   const queryInput = kind === "restaurants" ? restaurantsInput : eventsInput;
@@ -169,6 +295,7 @@ function renderEvents(): void {
     eventsCount.textContent = String(filtered.length);
   }
   syncFilterControls("events");
+  scheduleEventDescriptionToggles();
   scheduleTodayScroll("events");
 }
 
@@ -275,6 +402,7 @@ function setPushButtonState(): void {
 
   pushButton.hidden = !pushAvailable;
   pushButton.disabled = !pushAvailable;
+  pushBanner?.toggleAttribute("hidden", !pushAvailable);
   pushButton.classList.toggle("active", pushSubscribed);
   pushButton.ariaLabel = pushSubscribed
     ? "Configure push alerts"
@@ -397,11 +525,9 @@ async function initPush(): Promise<void> {
 
   if (!supported) {
     pushButton.hidden = true;
-    pushBanner?.removeAttribute("hidden");
+    pushBanner?.setAttribute("hidden", "");
     return;
   }
-
-  pushBanner?.setAttribute("hidden", "");
 
   try {
     await navigator.serviceWorker.register("/sw.js");
@@ -432,8 +558,6 @@ async function initPush(): Promise<void> {
     if (!pushAvailable) return;
     setPushPanelOpen(!pushPanelOpen);
   });
-
-  pushClose?.addEventListener("click", () => setPushPanelOpen(false));
 
   pushReset?.addEventListener("click", () => {
     state.pushPreferences = normalizePushPreferences();
@@ -529,16 +653,40 @@ eventsInput?.addEventListener("input", () => {
   setEventQuery(eventsInput.value);
 });
 
+eventsBody?.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+
+  const toggle = target.closest("[data-event-description-toggle]");
+  if (!(toggle instanceof HTMLButtonElement)) return;
+
+  const description = toggle.closest("[data-event-description]");
+  if (!(description instanceof HTMLElement)) return;
+  if (description.dataset.animating === "true") return;
+  const text = description.querySelector<HTMLElement>("[data-event-description-text]");
+  if (!text) return;
+
+  const isExpanded = description.dataset.expanded === "true";
+  setEventDescriptionExpanded(description, text, toggle, !isExpanded);
+});
+
 window.addEventListener("hashchange", () => {
   scheduleActiveTodayScroll(true);
+  scheduleEventDescriptionToggles();
 });
 
 window.addEventListener("load", () => {
   scheduleActiveTodayScroll(true);
+  scheduleEventDescriptionToggles();
 }, { once: true });
 
 window.addEventListener("pageshow", () => {
   scheduleActiveTodayScroll(true);
+  scheduleEventDescriptionToggles();
+});
+
+window.addEventListener("resize", () => {
+  scheduleEventDescriptionToggles();
 });
 
 window.addEventListener("popstate", () => {

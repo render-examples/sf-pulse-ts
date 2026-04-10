@@ -164,7 +164,10 @@ export function renderEventTableBody(events: SFEvent[]): string {
             }
             ${
               event.description
-                ? `<div class="cellSub">${escapeHtml(event.description)}</div>`
+                ? `<div class="cellSub eventDescription" data-event-description data-expanded="false">
+                    <span class="eventDescriptionText" id="event-description-${event.id}" data-event-description-text>${escapeHtml(event.description)}</span>
+                    <button class="eventDescriptionToggle" type="button" data-event-description-toggle aria-expanded="false" aria-controls="event-description-${event.id}" hidden>more</button>
+                  </div>`
                 : ""
             }
             ${

@@ -89,7 +89,12 @@ const eventCategoryOptions = getEventCategoryOptions(data.events);
                 Save neighborhoods, cuisines, dietary flags, and event categories for push delivery.
               </p>
             </div>
-            <button class="pushSecondaryAction" type="button" data-push-close>Close</button>
+          </div>
+
+          <div class="pushBanner" data-push-banner hidden>
+            <strong>Notifications:</strong>
+            On desktop, tap the bell and allow browser notifications. On iPhone or iPad, add SF Pulse to your Home
+            Screen first, then enable alerts from the bell.
           </div>
 
           <div class="pushGrid">
@@ -285,10 +290,6 @@ const eventCategoryOptions = getEventCategoryOptions(data.events);
           </div>
         </section>
 
-        <div class="pushBanner" data-push-banner>
-          <strong>iOS Push Notifications:</strong>
-          Add to Home Screen (Share → Add to Home Screen) then tap the bell icon. Requires iOS 16.4+.
-        </div>
       </main>
 
       <div class="toastRegion" aria-live="polite" data-toast-region></div>
