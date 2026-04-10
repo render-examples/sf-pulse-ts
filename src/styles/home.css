@@ -191,7 +191,7 @@
   max-width: 960px;
   width: 100%;
   margin: 0 auto;
-  padding: 24px 20px 0;
+  padding: 24px 20px calc(12px + env(safe-area-inset-bottom, 0px));
   min-height: 0;
   overflow: hidden;
 }
@@ -387,15 +387,16 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  min-height: 50vh;
 }
 
 .timelineScroll {
   overflow-y: auto;
   overflow-x: auto;
   overscroll-behavior: contain;
-  min-height: 0;
+  min-height: 50vh;
   height: 100%;
+  padding-bottom: 12px;
 }
 
 .todayRow {
