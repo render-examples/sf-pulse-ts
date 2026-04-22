@@ -27,7 +27,7 @@ import type { NewEvent, NewRestaurant } from "./types.js";
 const MICHELIN_CRON_JOB = "michelin_california_selection";
 const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
 
-function settled<T>(
+export function settled<T>(
   result: PromiseSettledResult<T>,
   label: string,
   fallback: T,
@@ -46,6 +46,38 @@ export function isCronJobDue(
   const lastRun = new Date(lastRunAt);
   if (Number.isNaN(lastRun.getTime())) return true;
   return reference.getTime() - lastRun.getTime() >= intervalMs;
+}
+
+export function dedupRestaurants(items: NewRestaurant[]): NewRestaurant[] {
+  const seen = new Set<string>()
+  const result: NewRestaurant[] = []
+  for (const restaurant of items) {
+    const key = restaurant.name.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(restaurant)
+  }
+  return result
+}
+
+export function dedupEvents(items: NewEvent[]): NewEvent[] {
+  const seen = new Set<string>()
+  const result: NewEvent[] = []
+  for (const event of items) {
+    const normalizedDate = normalizeDateText(event.date)
+    const key = buildEventIdentityKey({
+      title: event.title,
+      location: event.location,
+      dateText: normalizedDate,
+    })
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push({
+      ...event,
+      date: normalizedDate,
+    })
+  }
+  return result
 }
 
 export async function main(): Promise<void> {
@@ -70,14 +102,11 @@ export async function main(): Promise<void> {
     [],
   );
 
-  const seenNames = new Set<string>();
-  const newRestaurants: NewRestaurant[] = [];
-  for (const restaurant of [...eaterItems, ...sfistItems, ...ddgRestaurants]) {
-    const key = restaurant.name.toLowerCase();
-    if (seenNames.has(key)) continue;
-    seenNames.add(key);
-    newRestaurants.push(restaurant);
-  }
+  const newRestaurants = dedupRestaurants([
+    ...eaterItems,
+    ...sfistItems,
+    ...ddgRestaurants,
+  ])
 
   const michelinRun = await getCronRun(MICHELIN_CRON_JOB);
   if (isCronJobDue(michelinRun?.last_ran_at, THREE_DAYS_MS)) {
@@ -119,27 +148,12 @@ export async function main(): Promise<void> {
     [],
   );
 
-  const seenKeys = new Set<string>();
-  const newEvents: NewEvent[] = [];
-  for (const event of [
+  const newEvents = dedupEvents([
     ...funcheapItems,
     ...famsfItems,
     ...calAcademyItems,
     ...ddgEvents,
-  ]) {
-    const normalizedDate = normalizeDateText(event.date);
-    const key = buildEventIdentityKey({
-      title: event.title,
-      location: event.location,
-      dateText: normalizedDate,
-    });
-    if (seenKeys.has(key)) continue;
-    seenKeys.add(key);
-    newEvents.push({
-      ...event,
-      date: normalizedDate,
-    });
-  }
+  ])
 
   console.info(
     `[cron] candidates: ${newRestaurants.length} restaurants, ${newEvents.length} events`,

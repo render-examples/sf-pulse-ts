@@ -9,7 +9,7 @@
 import { getPool } from "../server/db.js";
 import { main } from "./cron-refresh/run.js";
 
-export { main } from "./cron-refresh/run.js";
+export { main, settled, isCronJobDue, dedupRestaurants, dedupEvents } from "./cron-refresh/run.js";
 export { searchWeb } from "./cron-refresh/http.js";
 export {
   stripHtml,
