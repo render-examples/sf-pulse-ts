@@ -4,28 +4,33 @@ SF Pulse is a TypeScript app for tracking San Francisco restaurant openings and 
 
 ## Stack
 
-- Node.js 20+
+- Node.js >=22.12.0
 - npm
 - TypeScript
 - Astro 6 + Node adapter
 - PostgreSQL
 - Optional Redis for multi-instance realtime fanout
+- Render Workflows (`@renderinc/sdk`) for the daily scraping pipeline
 
 ## Repo layout
 
 - `src/pages/`: Astro pages and API routes
 - `src/scripts/`: browser-side progressive enhancement for the home page
+- `src/server/api/`: request handlers shared between Astro routes and the test HTTP server
 - `server/`: storage, migrations, refresh logic, security, and realtime plumbing
-- `shared/`: shared timeline/date/identity helpers used by server and browser code
-- `bin/`: build, migration, cron refresh, and menu discovery scripts
-- `migrations/`: plain SQL migrations
-- `patches/`: local `patch-package` fixes used by the test and migration stack
+- `shared/`: isomorphic timeline/date/identity/filter helpers used by server and browser
+- `client/`: client-side date and timeline library
+- `bin/cron-refresh/`: source scrapers (Eater SF, SFist, Michelin, FunCheap, FAMSF, Cal Academy)
+- `bin/workflow/`: Render Workflow task definitions for the daily scraping pipeline
+- `bin/`: build, migration, cron trigger, and workflow entry scripts
+- `migrations/`: plain SQL migrations (0001–0010)
+- `patches/`: local `patch-package` fixes for pg-mem and pgsql-ast-parser
 - `render.yaml`: Render deployment definition
 - `Dockerfile`: production container build
 
 ## Requirements
 
-- Node.js 20 or newer
+- Node.js 22.12.0 or newer
 - npm
 - A PostgreSQL database
 - Redis only if you want cross-instance SSE/pubsub behavior locally
@@ -108,6 +113,8 @@ node --env-file=.env.local --import tsx bin/seed-menus.ts
 | `CRON_SECRET` | Recommended locally, required in production | Protects mutation endpoints that require the `x-cron-secret` header. |
 | `REDIS_URL` | No | Enables Redis-backed pub/sub for realtime fanout across instances. Without it, realtime stays in-process. |
 | `NODE_ENV` | Set by scripts/runtime | `development`, `test`, or `production`. |
+| `RENDER_API_KEY` | Cron service only | Render API token used by the cron trigger to start workflows. |
+| `SF_PULSE_WORKFLOW_SLUG` | Cron service only | Render Workflow slug used to identify the daily-refresh workflow. |
 
 To generate VAPID keys locally:
 
@@ -119,10 +126,10 @@ npx web-push generate-vapid-keys
 
 - `npm run dev`: start the app in development mode with Astro and `.env.local`
 - `npm run migrate`: apply SQL migrations from `migrations/`
-- `npm run build`: build the Astro app, server bundle, cron bundle, and copy migrations into `dist/`
+- `npm run build`: build the Astro app + esbuild server bundles (migrate, cron, workflow, trigger-workflow) into `dist/`
 - `npm start`: start the production server from `dist/server/entry.mjs`
 - `npm run typecheck`: run TypeScript checks for app and test configs
-- `npm test`: run the Node test suite
+- `npm test`: run the Node test suite (uses pg-mem, no real DB needed)
 
 ## Development notes
 
@@ -134,22 +141,32 @@ npx web-push generate-vapid-keys
 
 ## API surface
 
-- `GET /api/restaurants`
-- `GET /api/events`
-- `GET /api/updates`
-- `GET /api/updates/last-updated`
-- `GET /api/healthz`
-- `GET /api/events-stream`
-- `GET /api/rss.xml`
-- `GET /api/push/vapid-key`
-- `POST /api/push/subscribe`
-- `POST /api/push/unsubscribe`
+- `GET /api/restaurants` — list restaurants
+- `DELETE /api/restaurants/:id` — delete a restaurant (requires `x-cron-secret`)
+- `GET /api/events` — list events
+- `DELETE /api/events/:id` — delete an event (requires `x-cron-secret`)
+- `GET /api/updates` — recent items
+- `GET /api/updates/last-updated` — last-updated timestamp
+- `GET /api/healthz` — health check
+- `GET /api/events-stream` — SSE realtime stream
+- `GET /api/rss.xml` — RSS feed
+- `GET /api/push/vapid-key` — VAPID public key
+- `POST /api/push/subscribe` — register push subscription
+- `POST /api/push/unsubscribe` — remove push subscription
+- `GET /api/push/subscription` — check subscription status
+- `POST /api/push/preferences` — update notification preferences
 
 ## Production
 
-- Render deployment is defined in `render.yaml`.
-- The Render web service builds the app, runs migrations before deploy, and starts `dist/server/entry.mjs`.
-- A separate Render cron service runs the refresh job on a schedule.
-- `Dockerfile` provides a production image based on `node:22-slim`.
+Render deployment is defined in `render.yaml`:
+
+- **Web** (`sf-pulse`): builds the app, runs migrations pre-deploy, starts `dist/server/entry.mjs`. Health check at `/api/healthz`.
+- **Cron** (`sf-pulse-daily`): runs daily at 7 AM PDT. Executes `dist/bin/trigger-workflow.cjs` to trigger the daily-refresh Render Workflow via the SDK API.
+- **Database** (`sf-pulse-db`): PostgreSQL.
+- **Key-value** (`sf-pulse-realtime`): Redis for cross-instance SSE fanout.
+
+The workflow worker (`sf-pulse-workflow`) is configured separately in the Render Dashboard. It runs the task server (`dist/bin/workflow.cjs`) and handles the daily scraping pipeline as individual workflow tasks.
+
+`Dockerfile` provides a production image based on `node:22-slim`.
 
 For production, supply environment variables through the host platform. Do not rely on `.env.local` outside local development.

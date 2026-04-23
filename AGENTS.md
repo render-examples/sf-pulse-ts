@@ -60,6 +60,13 @@ Run `node --import tsx/esm --test server/migrate.test.ts` before the full suite 
 
 ## Code conventions
 
+**Tests are mandatory.** Every feature, bug fix, or behavior change must include or update tests. Run `npm test` and `npm run typecheck` to verify before considering work complete.
+
+**Docs stay current.** When adding or changing features, update the relevant docs:
+- `README.md` — user-facing setup, API surface, scripts, environment variables
+- `AGENTS.md` — architecture, conventions, and agent guidance
+- `patches/README.md` and `docs/pg-mem-upstreaming.md` — when adding pg-mem/pgsql-ast-parser patches
+
 **Prettier config** (in package.json): no semicolons, trailing commas, single quotes.
 
 **Logging:** `console.info` for lifecycle output, `console.warn` for degraded states, `console.error` for failures. `console.log` is for temporary debugging only. Use stable prefixes like `[cron]`, `[migrate]`.
@@ -74,7 +81,7 @@ Requires Node.js >=22.12.0. Local secrets go in `.env.local` (gitignored). Only 
 
 ## Deployment
 
-Render.com via `render.yaml`: web service + PostgreSQL + Redis + daily cron job. Pre-deploy runs migrations. Build produces `dist/server/entry.mjs` (web), `dist/bin/migrate.cjs`, `dist/bin/cron.cjs`.
+Render.com via `render.yaml`: web service + PostgreSQL + Redis + daily cron trigger. Pre-deploy runs migrations. Build produces `dist/server/entry.mjs` (web), `dist/bin/migrate.cjs`, `dist/bin/cron.cjs`, `dist/bin/workflow.cjs`, `dist/bin/trigger-workflow.cjs`. The workflow worker is configured separately in the Render Dashboard.
 
 ## Workflows
 
