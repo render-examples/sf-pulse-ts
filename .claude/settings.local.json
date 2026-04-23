@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(node -e \"const p = require\\(''/Users/joeybaker/code/sf-pulse/node_modules/@renderinc/sdk/package.json''\\); console.log\\(''dependencies:'', Object.keys\\(p.dependencies || {}\\).join\\('', ''\\)\\)\")",
+      "mcp__plugin_serena_serena__read_file",
+      "Bash(node --import tsx/esm --test:*)",
+      "Bash(npm test:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(node --import tsx/esm -e:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npm run typecheck:*)",
+      "Bash(npx astro check:*)",
+      "Bash(git checkout:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(for file in /Users/joeybaker/code/sf-pulse/bin/workflow/*.ts /Users/joeybaker/code/sf-pulse/bin/workflow.ts /Users/joeybaker/code/sf-pulse/bin/trigger-workflow.ts)",
+      "Bash(do if grep -q \";\" \"$file\")",
+      "Bash(then echo \"$file has semicolons\")",
+      "Bash(fi)",
+      "Bash(done)",
+      "Bash(npm run build:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(open \"https://dashboard.render.com/new/workflow\")"
+    ]
+  }
+}
