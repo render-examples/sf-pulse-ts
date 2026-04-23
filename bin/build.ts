@@ -3,7 +3,7 @@ import { cp, readFile } from "fs/promises";
 import { execFileSync } from "node:child_process";
 
 // Deps bundled into server binaries (everything else is external)
-const bundled = new Set(["pg", "web-push", "zod"]);
+const bundled = new Set(["pg", "web-push", "zod", "@renderinc/sdk", "eventsource", "openapi-fetch"]);
 
 async function externals(): Promise<string[]> {
   const pkg = JSON.parse(await readFile("package.json", "utf-8"));
@@ -26,8 +26,10 @@ async function buildAll() {
   const ext = await externals();
 
   const serverEntries: Record<string, string> = {
-    "dist/bin/migrate": "bin/migrate.ts",
-    "dist/bin/cron":    "bin/cron-refresh.ts",
+    "dist/bin/migrate":           "bin/migrate.ts",
+    "dist/bin/cron":              "bin/cron-refresh.ts",
+    "dist/bin/workflow":          "bin/workflow.ts",
+    "dist/bin/trigger-workflow":  "bin/trigger-workflow.ts",
   };
 
   for (const [outfile, entry] of Object.entries(serverEntries)) {

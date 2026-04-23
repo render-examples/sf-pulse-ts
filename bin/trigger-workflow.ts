@@ -18,11 +18,15 @@ if (!slug) {
 
 const render = new Render({ token })
 
-console.info(`[cron] triggering workflow ${slug}/daily-refresh...`)
-try {
-  const result = await render.workflows.runTask(`${slug}/daily-refresh`, [])
-  console.info('[cron] workflow completed:', JSON.stringify(result))
-} catch (error) {
-  console.error('[cron] workflow failed:', error)
-  process.exitCode = 1
+async function main() {
+  console.info(`[cron] triggering workflow ${slug}/daily-refresh...`)
+  try {
+    const result = await render.workflows.runTask(`${slug}/daily-refresh`, [])
+    console.info('[cron] workflow completed:', JSON.stringify(result))
+  } catch (error) {
+    console.error('[cron] workflow failed:', error)
+    process.exitCode = 1
+  }
 }
+
+main()
