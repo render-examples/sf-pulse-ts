@@ -19,7 +19,7 @@
     "migrate": "node --env-file-if-exists=.env.local --import tsx bin/migrate.ts",
     "start": "NODE_ENV=production node dist/server/entry.mjs",
     "typecheck": "ASTRO_TELEMETRY_DISABLED=1 node --env-file-if-exists=.env.local ./node_modules/astro/bin/astro.mjs check && tsc --project tsconfig.test.json --noEmit",
-    "test": "SF_PULSE_TEST_TRANSPORT=in-process HOST=127.0.0.1 NODE_ENV=test node --import tsx/esm --test $(find server bin client/src/lib src -name '*.test.ts' | sort | tr '\\n' ' ')"
+    "test": "SF_PULSE_TEST_TRANSPORT=in-process HOST=127.0.0.1 NODE_ENV=test node --import tsx/esm --test $(find shared server bin client/src/lib src -name '*.test.ts' | sort | tr '\\n' ' ')"
   },
   "dependencies": {
     "@astrojs/node": "^10.0.4",
