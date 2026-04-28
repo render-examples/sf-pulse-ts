@@ -1,55 +1,59 @@
-databases:
-  - name: sf-pulse-db
-    databaseName: sfpulse
-    user: sfpulse
-    plan: basic-256mb
+projects:
+  - name: sf-pulse
+    environments:
+      - name: production
+        databases:
+          - name: sf-pulse-db
+            databaseName: sfpulse
+            user: sfpulse
+            plan: basic-256mb
 
-services:
-  - type: keyvalue
-    name: sf-pulse-realtime
-    plan: starter
-    maxmemoryPolicy: noeviction
-    ipAllowList: []
+        services:
+          - type: keyvalue
+            name: sf-pulse-realtime
+            plan: starter
+            maxmemoryPolicy: noeviction
+            ipAllowList: []
 
-  - type: web
-    name: sf-pulse
-    runtime: node
-    plan: starter
-    buildCommand: npm ci --include=dev && npm run build
-    preDeployCommand: node dist/bin/migrate.cjs
-    startCommand: node dist/server/entry.mjs
-    healthCheckPath: /api/healthz
-    envVars:
-      - key: HOST
-        value: 0.0.0.0
-      - key: NODE_ENV
-        value: production
-      - key: DATABASE_URL
-        fromDatabase:
-          name: sf-pulse-db
-          property: connectionString
-      - key: VAPID_PUBLIC_KEY
-        sync: false
-      - key: VAPID_PRIVATE_KEY
-        sync: false
-      - key: CRON_SECRET
-        generateValue: true
-      - key: REDIS_URL
-        fromService:
-          name: sf-pulse-realtime
-          type: keyvalue
-          property: connectionString
+          - type: web
+            name: sf-pulse
+            runtime: node
+            plan: starter
+            buildCommand: npm ci --include=dev && npm run build
+            preDeployCommand: node dist/bin/migrate.cjs
+            startCommand: node dist/server/entry.mjs
+            healthCheckPath: /api/healthz
+            envVars:
+              - key: HOST
+                value: 0.0.0.0
+              - key: NODE_ENV
+                value: production
+              - key: DATABASE_URL
+                fromDatabase:
+                  name: sf-pulse-db
+                  property: connectionString
+              - key: VAPID_PUBLIC_KEY
+                sync: false
+              - key: VAPID_PRIVATE_KEY
+                sync: false
+              - key: CRON_SECRET
+                generateValue: true
+              - key: REDIS_URL
+                fromService:
+                  name: sf-pulse-realtime
+                  type: keyvalue
+                  property: connectionString
 
-  - type: cron
-    name: sf-pulse-daily
-    runtime: node
-    plan: starter
-    # 7:00 AM PDT = 14:00 UTC
-    schedule: "0 14 * * *"
-    buildCommand: npm ci --include=dev && npm run build
-    startCommand: node dist/bin/trigger-workflow.cjs
-    envVars:
-      - key: RENDER_API_KEY
-        sync: false
-      - key: SF_PULSE_WORKFLOW_SLUG
-        sync: false
+          - type: cron
+            name: sf-pulse-daily
+            runtime: node
+            plan: starter
+            # 7:00 AM PDT = 14:00 UTC
+            schedule: "0 14 * * *"
+            buildCommand: npm ci --include=dev && npm run build
+            startCommand: node dist/bin/trigger-workflow.cjs
+            envVars:
+              - key: RENDER_API_KEY
+                sync: false
+              - key: SF_PULSE_WORKFLOW_SLUG
+                sync: false
