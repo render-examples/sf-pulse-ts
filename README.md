@@ -199,7 +199,7 @@ Render Workflows are not supported in Blueprint YAML, so `sf-pulse-workflow` mus
 
 ### 3. Fill in secrets
 
-Set these in the Render Dashboard. Each is marked `sync: false` in `render.yaml` and must be filled manually.
+These are `sync: false` env vars on the Blueprint-created services from step 1 — not on `sf-pulse-workflow`. Set them in the Render Dashboard after the Blueprint deploys.
 
 **`sf-pulse` (web service):**
 
