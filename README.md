@@ -189,14 +189,13 @@ Render Workflows are not supported in Blueprint YAML, so `sf-pulse-workflow` mus
 
 1. Dashboard → **New** → **Workflow** → connect the repo, branch `main`.
 2. Set **Name** to `sf-pulse-workflow`.
-3. Set **Build Command** to `npm ci --include=dev && npm run build`.
-4. Set **Start Command** to `node dist/bin/workflow.cjs`.
-5. Set **Plan** to Starter.
+3. Set **Start Command** to `node dist/bin/workflow.cjs`.
+4. Set **Plan** to Starter.
 6. Add environment variables:
    - `NODE_ENV` = `production`
    - `DATABASE_URL` — from the `sf-pulse-db` database (connection string)
    - `REDIS_URL` — from the `sf-pulse-realtime` key-value store (connection string)
-7. Save and deploy. Once it's live, go to **Settings** and note the **Slug** value for step 4.
+6. Save and deploy. Once it's live, go to **Settings** and note the **Slug** value for step 4.
 
 ### 3. Fill in secrets
 
