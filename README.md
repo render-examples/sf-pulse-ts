@@ -165,7 +165,7 @@ Render deployment is defined in `render.yaml`:
 - **Database** (`sf-pulse-db`): PostgreSQL.
 - **Key-value** (`sf-pulse-realtime`): Redis for cross-instance SSE fanout.
 
-The workflow worker (`sf-pulse-workflow`) must be created manually in the Render Dashboard — Render Workflows are not supported in Blueprint YAML. See [Deploy to Render](#deploy-to-render) for instructions.
+The workflow service (`sf-pulse-workflow`) must be created manually in the Render Dashboard as a **Workflow** — Render Workflows are not supported in Blueprint YAML. See [Deploy to Render](#deploy-to-render) for instructions.
 
 `Dockerfile` provides a production image based on `node:22-slim`.
 
@@ -183,11 +183,11 @@ https://dashboard.render.com/blueprint/new?repo=https://github.com/joeybaker/sf-
 
 This creates four services from `render.yaml`: web, cron trigger, PostgreSQL, and Redis.
 
-### 2. Create the workflow worker manually
+### 2. Create the workflow service manually
 
 Render Workflows are not supported in Blueprint YAML, so `sf-pulse-workflow` must be created by hand in the Dashboard.
 
-1. Dashboard → **New** → **Background Worker** → connect the repo, branch `main`.
+1. Dashboard → **New** → **Workflow** → connect the repo, branch `main`.
 2. Set **Name** to `sf-pulse-workflow`.
 3. Set **Build Command** to `npm ci --include=dev && npm run build`.
 4. Set **Start Command** to `node dist/bin/workflow.cjs`.
