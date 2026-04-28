@@ -165,8 +165,60 @@ Render deployment is defined in `render.yaml`:
 - **Database** (`sf-pulse-db`): PostgreSQL.
 - **Key-value** (`sf-pulse-realtime`): Redis for cross-instance SSE fanout.
 
-The workflow worker (`sf-pulse-workflow`) is configured separately in the Render Dashboard. It runs the task server (`dist/bin/workflow.cjs`) and handles the daily scraping pipeline as individual workflow tasks.
+The workflow worker (`sf-pulse-workflow`) must be created manually in the Render Dashboard — Render Workflows are not supported in Blueprint YAML. See [Deploy to Render](#deploy-to-render) for instructions.
 
 `Dockerfile` provides a production image based on `node:22-slim`.
 
 For production, supply environment variables through the host platform. Do not rely on `.env.local` outside local development.
+
+## Deploy to Render
+
+### 1. Deploy the Blueprint
+
+Open the Blueprint link for your repo (replace the URL with your fork if needed):
+
+```
+https://dashboard.render.com/blueprint/new?repo=https://github.com/joeybaker/sf-pulse
+```
+
+This creates four services from `render.yaml`: web, cron trigger, PostgreSQL, and Redis.
+
+### 2. Create the workflow worker manually
+
+Render Workflows are not supported in Blueprint YAML, so `sf-pulse-workflow` must be created by hand in the Dashboard.
+
+1. Dashboard → **New** → **Background Worker** → connect the repo, branch `main`.
+2. Set **Name** to `sf-pulse-workflow`.
+3. Set **Build Command** to `npm ci --include=dev && npm run build`.
+4. Set **Start Command** to `node dist/bin/workflow.cjs`.
+5. Set **Plan** to Starter.
+6. Add environment variables:
+   - `NODE_ENV` = `production`
+   - `DATABASE_URL` — from the `sf-pulse-db` database (connection string)
+   - `REDIS_URL` — from the `sf-pulse-realtime` key-value store (connection string)
+7. Save and deploy. Once it's live, go to **Settings** and note the **Slug** value for step 4.
+
+### 3. Fill in secrets
+
+Set these in the Render Dashboard. Each is marked `sync: false` in `render.yaml` and must be filled manually.
+
+**`sf-pulse` (web service):**
+
+| Variable | How to get it |
+| --- | --- |
+| `VAPID_PUBLIC_KEY` | Run `npx web-push generate-vapid-keys` |
+| `VAPID_PRIVATE_KEY` | Same command — public and private are generated together |
+
+**`sf-pulse-daily` (cron service):**
+
+| Variable | How to get it |
+| --- | --- |
+| `RENDER_API_KEY` | Dashboard → Account Settings → API Keys → Create API Key |
+| `SF_PULSE_WORKFLOW_SLUG` | The slug from `sf-pulse-workflow` Settings (step 2) |
+
+### 4. Verify (optional)
+
+To confirm the pipeline works before the first scheduled cron fires at 7 AM PDT:
+
+1. Go to `sf-pulse-daily` in the Dashboard → **Trigger Run**.
+2. Check `sf-pulse-workflow` logs for task execution output.
