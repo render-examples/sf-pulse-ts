@@ -24,7 +24,10 @@
       "Bash(done)",
       "Bash(npm run build:*)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(open \"https://dashboard.render.com/new/workflow\")"
+      "Bash(open \"https://dashboard.render.com/new/workflow\")",
+      "mcp__render__select_workspace",
+      "mcp__render__list_logs",
+      "mcp__render__update_environment_variables"
     ]
   }
 }
