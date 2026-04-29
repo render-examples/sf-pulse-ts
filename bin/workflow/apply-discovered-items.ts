@@ -17,8 +17,16 @@ export const applyDiscoveredItemsTask = task(
     console.info(
       `[workflow] applying ${input.restaurants?.length ?? 0} restaurants, ${input.events?.length ?? 0} events`,
     )
-    const result = await applyDiscoveredItems(input)
-    console.info('[workflow] apply result:', result)
-    return result
+    try {
+      const result = await applyDiscoveredItems(input)
+      console.info('[workflow] apply result:', result)
+      return result
+    } catch (error) {
+      console.error(
+        '[workflow] applyDiscoveredItems failed:',
+        error instanceof Error ? `${error.message}\n${error.stack}` : error,
+      )
+      throw error
+    }
   },
 )

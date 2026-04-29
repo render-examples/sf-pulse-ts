@@ -92,3 +92,5 @@ The `daily-refresh` orchestrator task in `bin/workflow/daily-refresh.ts` calls s
 Task wrappers are thin — all scraping logic lives in `bin/cron-refresh/`. For local dev, use `bin/cron-refresh.ts` directly (no workflow runtime needed).
 
 The cron service (`sf-pulse-daily`) triggers the workflow via the Render SDK API. The workflow worker (`sf-pulse-workflow`) runs the task server.
+
+**Workflow service env vars (set in Render Dashboard):** `DATABASE_URL` (internal connection string from `sf-pulse-db`), `REDIS_URL` (optional, internal from `sf-pulse-realtime`). The SDK auto-starts the task server when `RENDER_SDK_SOCKET_PATH` is set (Render injects this automatically). `bin/workflow.ts` guards against the double-start: if `RENDER_SDK_AUTO_START` is unset the SDK handles startup; set `RENDER_SDK_AUTO_START=false` to use our explicit `startTaskServer()` call instead.
