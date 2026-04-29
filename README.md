@@ -197,7 +197,23 @@ Render Workflows are not supported in Blueprint YAML, so `sf-pulse-workflow` mus
    - `REDIS_URL` — from the `sf-pulse-realtime` key-value store (connection string)
 6. Save and deploy. Once it's live, go to **Settings** and note the **Slug** value for step 4.
 
-### 3. Fill in secrets
+### 3. Configure the web service
+
+Two settings that MCP/Blueprint don't set automatically — do these in the Dashboard after the Blueprint deploys:
+
+**Dashboard → `sf-pulse` → Settings → Deploy → Pre-Deploy Command:**
+```
+node dist/bin/migrate.cjs
+```
+
+**Dashboard → `sf-pulse` → Settings → Health & Alerts → Health Check Path:**
+```
+/api/healthz
+```
+
+Then trigger a manual redeploy so migrations run before the server starts.
+
+### 4. Fill in secrets
 
 These are `sync: false` env vars on the Blueprint-created services from step 1 — not on `sf-pulse-workflow`. Set them in the Render Dashboard after the Blueprint deploys.
 
@@ -215,7 +231,7 @@ These are `sync: false` env vars on the Blueprint-created services from step 1 �
 | `RENDER_API_KEY` | Dashboard → Account Settings → API Keys → Create API Key |
 | `SF_PULSE_WORKFLOW_SLUG` | The slug from `sf-pulse-workflow` Settings (step 2) |
 
-### 4. Verify (optional)
+### 5. Verify (optional)
 
 To confirm the pipeline works before the first scheduled cron fires at 7 AM PDT:
 
