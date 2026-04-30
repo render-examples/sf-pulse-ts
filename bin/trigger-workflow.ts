@@ -20,7 +20,6 @@ const render = new Render({ token })
 
 const TERMINAL = new Set(['completed', 'succeeded', 'failed', 'canceled'])
 const POLL_MS = 15_000       // 15 s between polls
-const MAX_WAIT_MS = 900_000  // 15 min ceiling (task timeout is 10 min)
 
 async function main() {
   console.info(`[cron] triggering workflow ${slug}/daily-refresh...`)
@@ -29,7 +28,6 @@ async function main() {
     const { taskRunId } = result
     console.info(`[cron] task run started: ${taskRunId}`)
 
-    const deadline = Date.now() + MAX_WAIT_MS
     while (true) {
       await new Promise(r => setTimeout(r, POLL_MS))
 
@@ -45,9 +43,6 @@ async function main() {
         if (run.status === 'failed' || run.status === 'canceled') {
           console.error('[cron] workflow failed:', JSON.stringify(run))
           process.exit(1)
-        } else {
-          console.info('[cron] workflow completed:', JSON.stringify(run))
-          process.exit(0)
         }
       }
     }

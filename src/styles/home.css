@@ -477,7 +477,6 @@ thead th {
   text-transform: uppercase;
   color: var(--text-2);
   white-space: nowrap;
-  position: sticky;
   top: 0;
   z-index: 1;
   background: var(--surface);

@@ -22,11 +22,3 @@ import './workflow/apply-discovered-items.js'
 import './workflow/discover-menus.js'
 import './workflow/daily-refresh.js'
 import { startTaskServer } from '@renderinc/sdk/workflows'
-
-if (process.env.RENDER_SDK_AUTO_START === 'false') {
-  console.info('[workflow] starting task server...')
-  startTaskServer().catch((error) => {
-    console.error('[workflow] task server failed:', error)
-    process.exit(1)
-  })
-}
