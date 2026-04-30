@@ -460,7 +460,8 @@
 
 table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 13px;
 }
 
@@ -469,6 +470,7 @@ thead tr {
 }
 
 thead th {
+  position: sticky;
   text-align: left;
   padding: 10px 14px;
   font-size: 11px;
