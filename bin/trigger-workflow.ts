@@ -35,8 +35,7 @@ async function main() {
 
       if (Date.now() > deadline) {
         console.error(`[cron] timed out waiting for task run ${taskRunId}`)
-        process.exitCode = 1
-        return
+        process.exit(1)
       }
 
       const run = await render.workflows.getTaskRun(taskRunId)
@@ -45,16 +44,16 @@ async function main() {
       if (TERMINAL.has(run.status)) {
         if (run.status === 'failed' || run.status === 'canceled') {
           console.error('[cron] workflow failed:', JSON.stringify(run))
-          process.exitCode = 1
+          process.exit(1)
         } else {
           console.info('[cron] workflow completed:', JSON.stringify(run))
+          process.exit(0)
         }
-        return
       }
     }
   } catch (error) {
     console.error('[cron] workflow failed:', error)
-    process.exitCode = 1
+    process.exit(1)
   }
 }
 
