@@ -1,4 +1,4 @@
-import { describe, it } from "node:test";
+import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import {
   discoverMenu,
@@ -7,6 +7,7 @@ import {
   parseDietaryFlags,
 } from "../cron-refresh.js";
 import { setLookupOverrideForTests } from "./http.js";
+import { setOpenAIClientForTests } from "./openai.js";
 
 const publicLookup = async () => [{ address: "93.184.216.34", family: 4 }];
 
@@ -139,6 +140,23 @@ describe("findMenuUrls()", () => {
 
 describe("discoverMenu()", () => {
   it("returns the first parseable menu page and inferred dietary flags", async () => {
+    setOpenAIClientForTests({
+      chat: {
+        completions: {
+          create: async () => ({
+            choices: [{
+              message: {
+                content: JSON.stringify({
+                  gluten_free: { available: true, confidence: 'inferred' },
+                  vegan: { available: true, confidence: 'inferred' },
+                  vegetarian: { available: false, confidence: 'inferred' },
+                }),
+              },
+            }],
+          }),
+        },
+      },
+    })
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (input: string | URL | RequestInfo) => {
       const url =
@@ -186,12 +204,30 @@ describe("discoverMenu()", () => {
       assert.equal(result.dietaryFlags.gluten_free.confidence, "inferred");
       assert.equal(result.dietaryFlags.vegan.available, true);
     } finally {
+      setOpenAIClientForTests(undefined);
       setLookupOverrideForTests(null);
       globalThis.fetch = originalFetch;
     }
   });
 
   it("falls back to the first candidate when no menu page is parseable", async () => {
+    setOpenAIClientForTests({
+      chat: {
+        completions: {
+          create: async () => ({
+            choices: [{
+              message: {
+                content: JSON.stringify({
+                  gluten_free: { available: false, confidence: 'inferred' },
+                  vegan: { available: false, confidence: 'inferred' },
+                  vegetarian: { available: false, confidence: 'inferred' },
+                }),
+              },
+            }],
+          }),
+        },
+      },
+    })
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (input: string | URL | RequestInfo) => {
       const url =
@@ -223,8 +259,36 @@ describe("discoverMenu()", () => {
       assert.equal(result.dietaryFlags.vegan.available, false);
       assert.equal(result.dietaryFlags.vegetarian.available, false);
     } finally {
+      setOpenAIClientForTests(undefined);
       setLookupOverrideForTests(null);
       globalThis.fetch = originalFetch;
     }
   });
 });
+
+describe('discoverMenu() AI integration', () => {
+  afterEach(() => {
+    setOpenAIClientForTests(undefined)
+    setLookupOverrideForTests(null)
+  })
+
+  it('throws when OPENAI_API_KEY is not set and no test client is injected', async () => {
+    const saved = process.env.OPENAI_API_KEY
+    delete process.env.OPENAI_API_KEY
+    const originalFetch = globalThis.fetch
+    try {
+      setLookupOverrideForTests(async () => [{ address: '93.184.216.34', family: 4 }])
+      globalThis.fetch = (async (input: string | URL | RequestInfo) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url
+        if (url.startsWith('https://html.duckduckgo.com/html/')) {
+          return new Response('<a href="https://example.com/menu">Menu</a>', { status: 200 })
+        }
+        return new Response('<html><body><h1>Dinner Menu</h1><p>Appetizer $12</p><p>Entree $24</p><p>Dessert $8</p><p>Soup $9</p><p>Salad $11</p></body></html>', { status: 200 })
+      }) as typeof fetch
+      await assert.rejects(() => discoverMenu('Test Bistro'), /OPENAI_API_KEY is required/)
+    } finally {
+      if (saved !== undefined) process.env.OPENAI_API_KEY = saved
+      globalThis.fetch = originalFetch
+    }
+  })
+})

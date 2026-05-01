@@ -1,5 +1,6 @@
 import type { DietaryFlag, DietaryFlags } from "../../server/storage.js";
 import { searchWeb, fetchPageText } from "./http.js";
+import { parseDietaryFlagsWithAI } from "./openai.js";
 
 const GF_CONFIRMED = /\b(?:gluten[\s-]?free|gf|celiac[\s-]?friendly)\b/i;
 const VEGAN_CONFIRMED = /\b(?:vegan)\b/i;
@@ -101,7 +102,7 @@ export async function discoverMenu(restaurantName: string): Promise<{
 
     return {
       menuUrl: url,
-      dietaryFlags: parseDietaryFlags(text),
+      dietaryFlags: await parseDietaryFlagsWithAI(text),
     };
   }
 
