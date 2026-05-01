@@ -64,7 +64,9 @@ const RESTAURANTS_SCHEMA: Record<string, unknown> = {
 let _client: OpenAI | undefined
 let _testClient: { chat: OpenAI['chat'] } | undefined
 
-export function setOpenAIClientForTests(client: { chat: OpenAI['chat'] } | undefined): void {
+export function setOpenAIClientForTests(
+  client: { chat: OpenAI['chat'] } | undefined,
+): void {
   _testClient = client
 }
 
@@ -80,7 +82,9 @@ function getClient(): { chat: OpenAI['chat'] } {
   return _client
 }
 
-export async function parseDietaryFlagsWithAI(menuText: string): Promise<DietaryFlags> {
+export async function parseDietaryFlagsWithAI(
+  menuText: string,
+): Promise<DietaryFlags> {
   const client = getClient()
   const response = await client.chat.completions.create({
     model: 'gpt-4o-mini',
@@ -96,12 +100,17 @@ export async function parseDietaryFlagsWithAI(menuText: string): Promise<Dietary
     ],
     response_format: {
       type: 'json_schema',
-      json_schema: { name: 'dietary_flags', schema: DIETARY_FLAGS_SCHEMA, strict: true },
+      json_schema: {
+        name: 'dietary_flags',
+        schema: DIETARY_FLAGS_SCHEMA,
+        strict: true,
+      },
     },
   })
 
   const content = response.choices[0]?.message?.content
-  if (!content) throw new Error('OpenAI returned empty response for dietary flag parsing')
+  if (!content)
+    throw new Error('OpenAI returned empty response for dietary flag parsing')
   return JSON.parse(content) as DietaryFlags
 }
 
@@ -128,12 +137,17 @@ export async function parseEaterArticleWithAI(
     ],
     response_format: {
       type: 'json_schema',
-      json_schema: { name: 'restaurants', schema: RESTAURANTS_SCHEMA, strict: true },
+      json_schema: {
+        name: 'restaurants',
+        schema: RESTAURANTS_SCHEMA,
+        strict: true,
+      },
     },
   })
 
   const content = response.choices[0]?.message?.content
-  if (!content) throw new Error('OpenAI returned empty response for article parsing')
+  if (!content)
+    throw new Error('OpenAI returned empty response for article parsing')
 
   const parsed = JSON.parse(content) as {
     restaurants: Array<{

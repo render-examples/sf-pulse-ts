@@ -13,7 +13,9 @@ type FakeClient = { chat: { completions: { create: FakeCreate } } }
 function fakeClient(content: string): FakeClient {
   return {
     chat: {
-      completions: { create: async () => ({ choices: [{ message: { content } }] }) },
+      completions: {
+        create: async () => ({ choices: [{ message: { content } }] }),
+      },
     },
   }
 }
@@ -41,13 +43,19 @@ describe('parseDietaryFlagsWithAI()', () => {
       vegetarian: { available: true, confidence: 'confirmed' },
     }
     setOpenAIClientForTests(fakeClient(JSON.stringify(flags)))
-    const result = await parseDietaryFlagsWithAI('Gluten-free pasta. Vegetarian Pad Thai.')
+    const result = await parseDietaryFlagsWithAI(
+      'Gluten-free pasta. Vegetarian Pad Thai.',
+    )
     assert.deepEqual(result, flags)
   })
 
   it('throws on empty response content', async () => {
     setOpenAIClientForTests({
-      chat: { completions: { create: async () => ({ choices: [{ message: { content: '' } }] }) } },
+      chat: {
+        completions: {
+          create: async () => ({ choices: [{ message: { content: '' } }] }),
+        },
+      },
     })
     await assert.rejects(
       () => parseDietaryFlagsWithAI('menu'),
@@ -57,7 +65,13 @@ describe('parseDietaryFlagsWithAI()', () => {
 
   it('propagates API errors without swallowing them', async () => {
     setOpenAIClientForTests({
-      chat: { completions: { create: async () => { throw new Error('rate limit') } } },
+      chat: {
+        completions: {
+          create: async () => {
+            throw new Error('rate limit')
+          },
+        },
+      },
     })
     await assert.rejects(() => parseDietaryFlagsWithAI('menu'), /rate limit/)
   })
@@ -71,7 +85,8 @@ describe('parseEaterArticleWithAI()', () => {
     delete process.env.OPENAI_API_KEY
     try {
       await assert.rejects(
-        () => parseEaterArticleWithAI('<h1>Test</h1>', [], null, 'January 2024'),
+        () =>
+          parseEaterArticleWithAI('<h1>Test</h1>', [], null, 'January 2024'),
         /OPENAI_API_KEY is required/,
       )
     } finally {
@@ -108,25 +123,53 @@ describe('parseEaterArticleWithAI()', () => {
   it('filters out names already in the existing list (case-insensitive)', async () => {
     const payload = {
       restaurants: [
-        { name: 'Known Place', neighborhood: 'SOMA', cuisine: 'American', address: null, opened_date: 'January 2024' },
-        { name: 'New Spot', neighborhood: 'Mission', cuisine: 'Italian', address: null, opened_date: 'January 2024' },
+        {
+          name: 'Known Place',
+          neighborhood: 'SOMA',
+          cuisine: 'American',
+          address: null,
+          opened_date: 'January 2024',
+        },
+        {
+          name: 'New Spot',
+          neighborhood: 'Mission',
+          cuisine: 'Italian',
+          address: null,
+          opened_date: 'January 2024',
+        },
       ],
     }
     setOpenAIClientForTests(fakeClient(JSON.stringify(payload)))
-    const results = await parseEaterArticleWithAI('<html/>', ['known place'], null, 'January 2024')
+    const results = await parseEaterArticleWithAI(
+      '<html/>',
+      ['known place'],
+      null,
+      'January 2024',
+    )
     assert.equal(results.length, 1)
     assert.equal(results[0].name, 'New Spot')
   })
 
   it('returns empty array when AI finds no restaurants', async () => {
     setOpenAIClientForTests(fakeClient(JSON.stringify({ restaurants: [] })))
-    const results = await parseEaterArticleWithAI('<html/>', [], null, 'January 2024')
+    const results = await parseEaterArticleWithAI(
+      '<html/>',
+      [],
+      null,
+      'January 2024',
+    )
     assert.deepEqual(results, [])
   })
 
   it('propagates API errors without swallowing them', async () => {
     setOpenAIClientForTests({
-      chat: { completions: { create: async () => { throw new Error('timeout') } } },
+      chat: {
+        completions: {
+          create: async () => {
+            throw new Error('timeout')
+          },
+        },
+      },
     })
     await assert.rejects(
       () => parseEaterArticleWithAI('<html/>', [], null, 'January 2024'),
