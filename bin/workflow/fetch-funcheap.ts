@@ -1,6 +1,6 @@
 import { task } from '@renderinc/sdk/workflows'
-import { fetchFuncheap } from '../cron-refresh/events.js'
-import type { NewEvent } from '../cron-refresh/types.js'
+import { fetchFuncheapRaw } from '../cron-refresh/events.js'
+import type { RawArticle } from '../cron-refresh/types.js'
 
 export const fetchFuncheapTask = task(
   {
@@ -8,10 +8,10 @@ export const fetchFuncheapTask = task(
     retry: { maxRetries: 3, waitDurationMs: 2000, backoffScaling: 2 },
     timeoutSeconds: 120,
   },
-  async function runFetchFuncheap(): Promise<NewEvent[]> {
+  async function runFetchFuncheap(): Promise<RawArticle[]> {
     console.info('[workflow] fetching Funcheap...')
-    const items = await fetchFuncheap([])
-    console.info(`[workflow] Funcheap: ${items.length} candidates`)
+    const items = await fetchFuncheapRaw()
+    console.info(`[workflow] Funcheap: ${items.length} raw articles`)
     return items
   },
 )

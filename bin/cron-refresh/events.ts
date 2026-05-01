@@ -10,12 +10,14 @@ import {
   stripHtml,
   stripParsingNoiseHtml,
 } from "./html.js";
+import { extractBodyText } from "./html.js";
 import { isRecent } from "./recency.js";
 import { fetchRss } from "./rss.js";
 import type { NewEvent } from "./types.js";
+import type { RawArticle } from "./types.js";
 import { normalizeDateText } from "../../shared/dates.ts";
 import { buildEventIdentityKey } from "../../shared/event-identity.ts";
-import { fetchPageHtml } from "./http.js";
+import { fetchPageHtml, searchWeb } from "./http.js";
 
 const EXACT_EVENT_DATE_PATTERN =
   `(?:(${WEEKDAY_PATTERN}),?\\s+)?` +
@@ -952,4 +954,89 @@ export function parseCalAcademyPage(
     sourceUrl: "https://www.calacademy.org/events",
     headingLevels: "234",
   });
+}
+
+export async function fetchFuncheapRaw(): Promise<RawArticle[]> {
+  const items = await fetchRss("https://sf.funcheap.com/feed/");
+  const results: RawArticle[] = [];
+
+  for (const item of items) {
+    if (!isRecent(item.pubDate)) continue;
+    const pageHtml = item.link ? await fetchPageHtml(item.link) : "";
+    const jsonLdScripts = pageHtml ? extractJsonScripts(pageHtml) : [];
+
+    results.push({
+      source: "funcheap",
+      url: item.link || "",
+      title: item.title,
+      pubDate: item.pubDate || null,
+      bodyText: pageHtml ? extractBodyText(pageHtml) : item.description,
+      jsonLd: jsonLdScripts.length > 0 ? jsonLdScripts : undefined,
+    });
+  }
+
+  return results;
+}
+
+export async function fetchFAMSFRaw(): Promise<RawArticle[]> {
+  try {
+    const res = await fetch("https://www.famsf.org/calendar", {
+      headers: { "User-Agent": CRON_USER_AGENT },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) return [];
+    const html = await res.text();
+    return [
+      {
+        source: "famsf",
+        url: "https://www.famsf.org/calendar",
+        title: "FAMSF Calendar",
+        pubDate: null,
+        bodyText: extractBodyText(html),
+      },
+    ];
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchCalAcademyRaw(): Promise<RawArticle[]> {
+  try {
+    const res = await fetch("https://www.calacademy.org/events", {
+      headers: { "User-Agent": CRON_USER_AGENT },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) return [];
+    const html = await res.text();
+    return [
+      {
+        source: "calacademy",
+        url: "https://www.calacademy.org/events",
+        title: "Cal Academy Events",
+        pubDate: null,
+        bodyText: extractBodyText(html),
+      },
+    ];
+  } catch {
+    return [];
+  }
+}
+
+export async function searchEventsRaw(): Promise<RawArticle[]> {
+  const monthYear = new Date().toLocaleString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
+  const html = await searchWeb(
+    `San Francisco events Golden Gate Park concerts ${monthYear}`,
+  );
+  return [
+    {
+      source: "ddg",
+      url: "",
+      title: `DDG: San Francisco events ${monthYear}`,
+      pubDate: null,
+      bodyText: extractBodyText(html),
+    },
+  ];
 }

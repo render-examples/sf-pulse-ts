@@ -3,7 +3,7 @@ import { cp, readFile } from "fs/promises";
 import { execFileSync } from "node:child_process";
 
 // Deps bundled into server binaries (everything else is external)
-const bundled = new Set(["pg", "web-push", "zod", "@renderinc/sdk", "eventsource", "openapi-fetch"]);
+const bundled = new Set(["pg", "web-push", "zod", "@renderinc/sdk", "eventsource", "openapi-fetch", "openai", "@anthropic-ai/sdk", "zod-to-json-schema"]);
 
 async function externals(): Promise<string[]> {
   const pkg = JSON.parse(await readFile("package.json", "utf-8"));
