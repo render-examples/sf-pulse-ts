@@ -161,6 +161,9 @@ CRON_SECRET=<random-secret>
 
 # Optional: only needed for multi-instance realtime fanout
 REDIS_URL=redis://127.0.0.1:6379
+
+# Required for menu and article parsing (see docs/openai-api-permissions.md)
+OPENAI_API_KEY=
 ```
 
 4. Run migrations:
@@ -231,6 +234,7 @@ That's it! Watch your workflow run
 | `NODE_ENV` | Set by scripts/runtime | `development`, `test`, or `production`. |
 | `RENDER_API_KEY` | Cron service only | Render API token used by the cron trigger to start workflows. |
 | `SF_PULSE_WORKFLOW_SLUG` | Cron service only | Render Workflow slug used to identify the daily-refresh workflow. |
+| `OPENAI_API_KEY` | Yes (for cron/workflow) | Enables AI-powered dietary flag extraction and article parsing. Required when running the cron pipeline. See `docs/openai-api-permissions.md`. |
 
 To generate VAPID keys locally:
 

@@ -66,6 +66,8 @@ projects:
                 sync: false
               - key: VAPID_PRIVATE_KEY
                 sync: false
+              - key: OPENAI_API_KEY
+                sync: false
 
           - type: cron
             name: sf-pulse-daily
