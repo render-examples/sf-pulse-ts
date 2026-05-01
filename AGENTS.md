@@ -36,6 +36,8 @@ node --env-file=.env.local --import tsx bin/cron-refresh.ts
 
 **Data flow:** `bin/cron-refresh/` scrapes sources (Eater SF, SFist, Michelin, FunCheap, FAMSF, Cal Academy) → `server/refresh.ts` orchestrates dedup + upsert via `server/storage.ts` → broadcasts SSE deltas → sends personalized push notifications.
 
+**AI parsing:** `bin/cron-refresh/openai.ts` owns the OpenAI client and two AI extraction functions: `parseDietaryFlagsWithAI()` (menu text → dietary flags) and `parseEaterArticleWithAI()` (HTML → restaurant list). Both require `OPENAI_API_KEY` — the module throws a clear error when the key is absent, no silent fallback. Tests inject a mock client via `setOpenAIClientForTests()` — the same pattern as `setLookupOverrideForTests` in `http.ts`. See `docs/openai-api-permissions.md` for required key permissions.
+
 **Realtime:** `server/sse.ts` uses in-process broadcast when REDIS_URL is absent, Redis pub/sub when present. Client receives versioned delta events (upserted/deleted arrays), not full refreshes.
 
 **Database:** PostgreSQL via `pg`. Connection pool singleton in `server/db.ts`. Plain SQL migrations in `migrations/` tracked by `schema_migrations` table. All queries use parameterized statements.

@@ -140,23 +140,6 @@ describe("findMenuUrls()", () => {
 
 describe("discoverMenu()", () => {
   it("returns the first parseable menu page and inferred dietary flags", async () => {
-    setOpenAIClientForTests({
-      chat: {
-        completions: {
-          create: async () => ({
-            choices: [{
-              message: {
-                content: JSON.stringify({
-                  gluten_free: { available: true, confidence: 'inferred' },
-                  vegan: { available: true, confidence: 'inferred' },
-                  vegetarian: { available: false, confidence: 'inferred' },
-                }),
-              },
-            }],
-          }),
-        },
-      },
-    })
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (input: string | URL | RequestInfo) => {
       const url =
@@ -197,6 +180,23 @@ describe("discoverMenu()", () => {
     }) as typeof fetch;
 
     try {
+      setOpenAIClientForTests({
+        chat: {
+          completions: {
+            create: async () => ({
+              choices: [{
+                message: {
+                  content: JSON.stringify({
+                    gluten_free: { available: true, confidence: 'inferred' },
+                    vegan: { available: true, confidence: 'inferred' },
+                    vegetarian: { available: false, confidence: 'inferred' },
+                  }),
+                },
+              }],
+            }),
+          },
+        },
+      })
       setLookupOverrideForTests(publicLookup);
       const result = await discoverMenu("Test Bistro");
       assert.equal(result.menuUrl, "https://example.com/menu");
@@ -211,23 +211,6 @@ describe("discoverMenu()", () => {
   });
 
   it("falls back to the first candidate when no menu page is parseable", async () => {
-    setOpenAIClientForTests({
-      chat: {
-        completions: {
-          create: async () => ({
-            choices: [{
-              message: {
-                content: JSON.stringify({
-                  gluten_free: { available: false, confidence: 'inferred' },
-                  vegan: { available: false, confidence: 'inferred' },
-                  vegetarian: { available: false, confidence: 'inferred' },
-                }),
-              },
-            }],
-          }),
-        },
-      },
-    })
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (input: string | URL | RequestInfo) => {
       const url =
@@ -252,6 +235,23 @@ describe("discoverMenu()", () => {
     }) as typeof fetch;
 
     try {
+      setOpenAIClientForTests({
+        chat: {
+          completions: {
+            create: async () => ({
+              choices: [{
+                message: {
+                  content: JSON.stringify({
+                    gluten_free: { available: false, confidence: 'inferred' },
+                    vegan: { available: false, confidence: 'inferred' },
+                    vegetarian: { available: false, confidence: 'inferred' },
+                  }),
+                },
+              }],
+            }),
+          },
+        },
+      })
       setLookupOverrideForTests(publicLookup);
       const result = await discoverMenu("Test Bistro");
       assert.equal(result.menuUrl, "https://example.com/location");

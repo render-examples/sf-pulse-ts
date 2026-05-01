@@ -111,7 +111,13 @@ export async function parseDietaryFlagsWithAI(
   const content = response.choices[0]?.message?.content
   if (!content)
     throw new Error('OpenAI returned empty response for dietary flag parsing')
-  return JSON.parse(content) as DietaryFlags
+  try {
+    return JSON.parse(content) as DietaryFlags
+  } catch {
+    throw new Error(
+      `OpenAI returned non-JSON content for dietary flag parsing: ${content.slice(0, 100)}`,
+    )
+  }
 }
 
 export async function parseEaterArticleWithAI(
@@ -149,7 +155,7 @@ export async function parseEaterArticleWithAI(
   if (!content)
     throw new Error('OpenAI returned empty response for article parsing')
 
-  const parsed = JSON.parse(content) as {
+  let parsed: {
     restaurants: Array<{
       name: string
       neighborhood: string
@@ -157,6 +163,13 @@ export async function parseEaterArticleWithAI(
       address: string | null
       opened_date: string
     }>
+  }
+  try {
+    parsed = JSON.parse(content) as typeof parsed
+  } catch {
+    throw new Error(
+      `OpenAI returned non-JSON content for article parsing: ${content.slice(0, 100)}`,
+    )
   }
 
   const existingLower = new Set(existing.map((n) => n.toLowerCase()))
