@@ -1,4 +1,4 @@
-import { describe, it } from "node:test";
+import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import {
   extractMichelinPublicationUrls,
@@ -11,6 +11,7 @@ import {
 } from "../cron-refresh.js";
 import { setLookupOverrideForTests } from "./http.js";
 import { readFixture } from "./test-helpers.js";
+import { setOpenAIClientForTests } from "./openai.js";
 
 const eaterOpeningsHtml = readFixture("eater-openings-april-2026.html");
 const publicLookup = async () => [{ address: "93.184.216.34", family: 4 }];
@@ -201,6 +202,18 @@ describe("fetchEaterSF()", () => {
       throw new Error(`Unexpected fetch URL: ${url}`);
     }) as typeof fetch;
 
+    setOpenAIClientForTests({
+      chat: {
+        completions: {
+          create: async () => ({
+            choices: [{ message: { content: JSON.stringify({ restaurants: [
+              { name: 'Alpha Cafe', neighborhood: 'Mission', cuisine: 'Cafe', address: null, opened_date: 'April 2026' },
+              { name: 'Beta Bistro', neighborhood: 'SoMa', cuisine: 'Bistro', address: null, opened_date: 'April 2026' },
+            ] }) } }],
+          }),
+        },
+      },
+    })
     try {
       setLookupOverrideForTests(publicLookup);
       const results = await fetchEaterSF([]);
@@ -211,6 +224,7 @@ describe("fetchEaterSF()", () => {
     } finally {
       setLookupOverrideForTests(null);
       globalThis.fetch = originalFetch;
+      setOpenAIClientForTests(undefined)
     }
   });
 });
@@ -354,3 +368,80 @@ describe("fetchMichelinCaliforniaSelection()", () => {
     }
   });
 });
+
+describe('fetchEaterSF() AI integration', () => {
+  afterEach(() => {
+    setOpenAIClientForTests(undefined)
+    setLookupOverrideForTests(null)
+  })
+
+  it('throws when OPENAI_API_KEY is not set and no test client is injected', async () => {
+    const saved = process.env.OPENAI_API_KEY
+    delete process.env.OPENAI_API_KEY
+    const originalFetch = globalThis.fetch
+    const pubDate = new Date().toUTCString()
+    globalThis.fetch = (async (input: string | URL | RequestInfo) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url
+      if (url.includes('sf.eater.com/rss')) {
+        return new Response(
+          `<?xml version="1.0"?><rss version="2.0"><channel>
+            <item>
+              <title>New Restaurant Opens in Mission</title>
+              <link>https://sf.eater.com/article/123</link>
+              <pubDate>${pubDate}</pubDate>
+              <description>A new restaurant opens.</description>
+            </item>
+          </channel></rss>`,
+          { status: 200, headers: { 'content-type': 'application/rss+xml' } },
+        )
+      }
+      return new Response('<html><body><h1>New Restaurant</h1></body></html>', { status: 200 })
+    }) as typeof fetch
+    try {
+      setLookupOverrideForTests(publicLookup)
+      await assert.rejects(() => fetchEaterSF([]), /OPENAI_API_KEY is required/)
+    } finally {
+      if (saved !== undefined) process.env.OPENAI_API_KEY = saved
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('uses AI-extracted restaurants when client is available', async () => {
+    const aiPayload = {
+      restaurants: [
+        { name: 'AI Bistro', neighborhood: 'Mission', cuisine: 'French', address: '100 Valencia St', opened_date: 'April 2024' },
+      ],
+    }
+    setOpenAIClientForTests({
+      chat: { completions: { create: async () => ({ choices: [{ message: { content: JSON.stringify(aiPayload) } }] }) } },
+    })
+    setLookupOverrideForTests(publicLookup)
+    const originalFetch = globalThis.fetch
+    const pubDate = new Date().toUTCString()
+    globalThis.fetch = (async (input: string | URL | RequestInfo) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url
+      if (url.includes('sf.eater.com/rss')) {
+        return new Response(
+          `<?xml version="1.0"?><rss version="2.0"><channel>
+            <item>
+              <title>New Restaurant Opens in Mission</title>
+              <link>https://sf.eater.com/article/123</link>
+              <pubDate>${pubDate}</pubDate>
+              <description>A new restaurant opens.</description>
+            </item>
+          </channel></rss>`,
+          { status: 200, headers: { 'content-type': 'application/rss+xml' } },
+        )
+      }
+      return new Response('<html><body><h1>New Restaurant</h1></body></html>', { status: 200 })
+    }) as typeof fetch
+    try {
+      const results = await fetchEaterSF([])
+      const found = results.find((r) => r.name === 'AI Bistro')
+      assert.ok(found, 'Expected AI Bistro in results')
+      assert.equal(found.neighborhood, 'Mission')
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+})
