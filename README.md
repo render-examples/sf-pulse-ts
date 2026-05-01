@@ -231,10 +231,10 @@ That's it! Watch your workflow run
 | `VAPID_PRIVATE_KEY` | Only for push notifications | Private web-push key used on the server. |
 | `CRON_SECRET` | Recommended locally, required in production | Protects mutation endpoints that require the `x-cron-secret` header. |
 | `REDIS_URL` | No | Enables Redis-backed pub/sub for realtime fanout across instances. Without it, realtime stays in-process. |
+| `OPENAI_API_KEY` | Yes (for cron/workflow) | Enables AI-powered dietary flag extraction and article parsing. Required when running the cron pipeline. See `docs/openai-api-permissions.md`. |
 | `NODE_ENV` | Set by scripts/runtime | `development`, `test`, or `production`. |
 | `RENDER_API_KEY` | Cron service only | Render API token used by the cron trigger to start workflows. |
 | `SF_PULSE_WORKFLOW_SLUG` | Cron service only | Render Workflow slug used to identify the daily-refresh workflow. |
-| `OPENAI_API_KEY` | Yes (for cron/workflow) | Enables AI-powered dietary flag extraction and article parsing. Required when running the cron pipeline. See `docs/openai-api-permissions.md`. |
 
 To generate VAPID keys locally:
 
