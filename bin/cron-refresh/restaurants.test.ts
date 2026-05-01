@@ -202,19 +202,19 @@ describe("fetchEaterSF()", () => {
       throw new Error(`Unexpected fetch URL: ${url}`);
     }) as typeof fetch;
 
-    setOpenAIClientForTests({
-      chat: {
-        completions: {
-          create: async () => ({
-            choices: [{ message: { content: JSON.stringify({ restaurants: [
-              { name: 'Alpha Cafe', neighborhood: 'Mission', cuisine: 'Cafe', address: null, opened_date: 'April 2026' },
-              { name: 'Beta Bistro', neighborhood: 'SoMa', cuisine: 'Bistro', address: null, opened_date: 'April 2026' },
-            ] }) } }],
-          }),
-        },
-      },
-    })
     try {
+      setOpenAIClientForTests({
+        chat: {
+          completions: {
+            create: async () => ({
+              choices: [{ message: { content: JSON.stringify({ restaurants: [
+                { name: 'Alpha Cafe', neighborhood: 'Mission', cuisine: 'Cafe', address: null, opened_date: 'April 2026' },
+                { name: 'Beta Bistro', neighborhood: 'SoMa', cuisine: 'Bistro', address: null, opened_date: 'April 2026' },
+              ] }) } }],
+            }),
+          },
+        },
+      })
       setLookupOverrideForTests(publicLookup);
       const results = await fetchEaterSF([]);
       assert.deepEqual(
