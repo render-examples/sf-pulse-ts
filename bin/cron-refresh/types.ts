@@ -23,3 +23,5 @@ export type NewEvent = {
   description: string | null;
   source_url: string | null;
 };
+
+export type { RawArticle, RawMenuPage } from "../../server/llm/types.js";

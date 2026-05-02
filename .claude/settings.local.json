@@ -24,7 +24,14 @@
       "Bash(done)",
       "Bash(npm run build:*)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(open \"https://dashboard.render.com/new/workflow\")"
+      "Bash(open \"https://dashboard.render.com/new/workflow\")",
+      "Bash(/Users/joeybaker/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.7/skills/brainstorming/scripts/start-server.sh:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(git worktree:*)",
+      "Bash(npm install)",
+      "Bash(npm run dev:*)",
+      "Bash(render:*)",
+      "mcp__plugin_serena_serena__find_symbol"
     ]
   }
 }

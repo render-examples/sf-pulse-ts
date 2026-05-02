@@ -15,14 +15,25 @@ import {
   fetchCalAcademy,
   fetchFAMSF,
   fetchFuncheap,
+  fetchFuncheapRaw,
+  fetchFAMSFRaw,
+  fetchCalAcademyRaw,
+  searchEventsRaw,
 } from "./events.js";
 import {
   extractRestaurants,
   fetchEaterSF,
+  fetchEaterSFRaw,
   fetchMichelinCaliforniaSelection,
   fetchSFist,
+  searchRestaurantsRaw,
 } from "./restaurants.js";
-import type { NewEvent, NewRestaurant } from "./types.js";
+import type { NewEvent, NewRestaurant, RawArticle } from "./types.js";
+import { createLLMClientFromEnv } from "../../server/llm/index.js";
+import {
+  extractRestaurantsFromArticles,
+  extractEventsFromArticles,
+} from "../../server/llm/pipeline.js";
 
 const MICHELIN_CRON_JOB = "michelin_california_selection";
 const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
@@ -87,26 +98,62 @@ export async function main(): Promise<void> {
     year: "numeric",
   });
 
+  const llm = createLLMClientFromEnv();
+  if (llm) {
+    console.info("[cron] LLM client configured, using LLM extraction");
+  } else {
+    console.info("[cron] no LLM_API_KEY set, using regex-only extraction");
+  }
+
+  // Phase 1: Fetch sources (parallel)
   console.info("[cron] fetching restaurant sources...");
-  const [eaterResult, sfistResult, ddgRestaurantsResult] =
-    await Promise.allSettled([
-      fetchEaterSF([]),
-      fetchSFist([]),
-      searchWeb(`new restaurant openings San Francisco ${monthYear}`),
+  let restaurantArticles: NewRestaurant[] = [];
+
+  if (llm) {
+    // LLM path: fetch raw articles, then extract
+    const [eaterRawResult, sfistResult, ddgRawResult] =
+      await Promise.allSettled([
+        fetchEaterSFRaw(),
+        fetchSFist([]),
+        searchRestaurantsRaw(),
+      ]);
+
+    const eaterArticlesRaw = settled(eaterRawResult, "Eater SF", [] as RawArticle[]);
+    const sfistItems = settled(sfistResult, "SFist", [] as NewRestaurant[]);
+    const ddgArticlesRaw = settled(ddgRawResult, "DuckDuckGo (restaurants)", [] as RawArticle[]);
+
+    // Phase 2: LLM extraction
+    console.info("[cron] running LLM extraction for restaurants...");
+    const [eaterLlmResult, ddgLlmResult] = await Promise.allSettled([
+      extractRestaurantsFromArticles(llm, eaterArticlesRaw),
+      extractRestaurantsFromArticles(llm, ddgArticlesRaw),
     ]);
 
-  const eaterItems = settled(eaterResult, "Eater SF", [] as NewRestaurant[]);
-  const sfistItems = settled(sfistResult, "SFist", [] as NewRestaurant[]);
-  const ddgRestaurants = extractRestaurants(
-    stripHtml(settled(ddgRestaurantsResult, "DuckDuckGo (restaurants)", "")),
-    [],
-  );
+    restaurantArticles = [
+      ...sfistItems,
+      ...settled(eaterLlmResult, "LLM Eater", [] as NewRestaurant[]),
+      ...settled(ddgLlmResult, "LLM DDG restaurants", [] as NewRestaurant[]),
+    ];
+  } else {
+    // Regex-only path (original behavior)
+    const [eaterResult, sfistResult, ddgRestaurantsResult] =
+      await Promise.allSettled([
+        fetchEaterSF([]),
+        fetchSFist([]),
+        searchWeb(`new restaurant openings San Francisco ${monthYear}`),
+      ]);
 
-  const newRestaurants = dedupRestaurants([
-    ...eaterItems,
-    ...sfistItems,
-    ...ddgRestaurants,
-  ])
+    const eaterItems = settled(eaterResult, "Eater SF", [] as NewRestaurant[]);
+    const sfistItems = settled(sfistResult, "SFist", [] as NewRestaurant[]);
+    const ddgRestaurants = extractRestaurants(
+      stripHtml(settled(ddgRestaurantsResult, "DuckDuckGo (restaurants)", "")),
+      [],
+    );
+
+    restaurantArticles = [...eaterItems, ...sfistItems, ...ddgRestaurants];
+  }
+
+  const newRestaurants = dedupRestaurants(restaurantArticles);
 
   const michelinRun = await getCronRun(MICHELIN_CRON_JOB);
   if (isCronJobDue(michelinRun?.last_ran_at, THREE_DAYS_MS)) {
@@ -128,32 +175,70 @@ export async function main(): Promise<void> {
   }
 
   console.info("[cron] fetching event sources...");
-  const [funcheapResult, famsfResult, calAcademyResult, ddgEventsResult] =
-    await Promise.allSettled([
-      fetchFuncheap([]),
-      fetchFAMSF([]),
-      fetchCalAcademy([]),
-      searchWeb(`San Francisco events Golden Gate Park concerts ${monthYear}`),
-    ]);
+  let eventArticles: NewEvent[] = [];
 
-  const funcheapItems = settled(funcheapResult, "Funcheap", [] as NewEvent[]);
-  const famsfItems = settled(famsfResult, "FAMSF", [] as NewEvent[]);
-  const calAcademyItems = settled(
-    calAcademyResult,
-    "Cal Academy",
-    [] as NewEvent[],
-  );
-  const ddgEvents = extractEvents(
-    stripHtml(settled(ddgEventsResult, "DuckDuckGo (events)", "")),
-    [],
-  );
+  if (llm) {
+    // LLM path: fetch raw articles, then extract
+    const [funcheapRawResult, famsfRawResult, calAcademyRawResult, ddgERawResult] =
+      await Promise.allSettled([
+        fetchFuncheapRaw(),
+        fetchFAMSFRaw(),
+        fetchCalAcademyRaw(),
+        searchEventsRaw(),
+      ]);
 
-  const newEvents = dedupEvents([
-    ...funcheapItems,
-    ...famsfItems,
-    ...calAcademyItems,
-    ...ddgEvents,
-  ])
+    const funcheapRaw = settled(funcheapRawResult, "Funcheap", [] as RawArticle[]);
+    const famsfRaw = settled(famsfRawResult, "FAMSF", [] as RawArticle[]);
+    const calAcademyRaw = settled(calAcademyRawResult, "Cal Academy", [] as RawArticle[]);
+    const ddgEventsRaw = settled(ddgERawResult, "DuckDuckGo (events)", [] as RawArticle[]);
+
+    // Phase 2: LLM extraction
+    console.info("[cron] running LLM extraction for events...");
+    const [funcheapLlm, famsfLlm, calAcademyLlm, ddgEventsLlm] =
+      await Promise.allSettled([
+        extractEventsFromArticles(llm, funcheapRaw),
+        extractEventsFromArticles(llm, famsfRaw),
+        extractEventsFromArticles(llm, calAcademyRaw),
+        extractEventsFromArticles(llm, ddgEventsRaw),
+      ]);
+
+    eventArticles = [
+      ...settled(funcheapLlm, "LLM Funcheap", [] as NewEvent[]),
+      ...settled(famsfLlm, "LLM FAMSF", [] as NewEvent[]),
+      ...settled(calAcademyLlm, "LLM Cal Academy", [] as NewEvent[]),
+      ...settled(ddgEventsLlm, "LLM DDG events", [] as NewEvent[]),
+    ];
+  } else {
+    // Regex-only path (original behavior)
+    const [funcheapResult, famsfResult, calAcademyResult, ddgEventsResult] =
+      await Promise.allSettled([
+        fetchFuncheap([]),
+        fetchFAMSF([]),
+        fetchCalAcademy([]),
+        searchWeb(`San Francisco events Golden Gate Park concerts ${monthYear}`),
+      ]);
+
+    const funcheapItems = settled(funcheapResult, "Funcheap", [] as NewEvent[]);
+    const famsfItems = settled(famsfResult, "FAMSF", [] as NewEvent[]);
+    const calAcademyItems = settled(
+      calAcademyResult,
+      "Cal Academy",
+      [] as NewEvent[],
+    );
+    const ddgEvents = extractEvents(
+      stripHtml(settled(ddgEventsResult, "DuckDuckGo (events)", "")),
+      [],
+    );
+
+    eventArticles = [
+      ...funcheapItems,
+      ...famsfItems,
+      ...calAcademyItems,
+      ...ddgEvents,
+    ];
+  }
+
+  const newEvents = dedupEvents(eventArticles);
 
   console.info(
     `[cron] candidates: ${newRestaurants.length} restaurants, ${newEvents.length} events`,

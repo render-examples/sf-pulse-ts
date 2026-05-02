@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 600"
+  data-lat-min="37.70" data-lat-max="37.81" data-lng-min="-122.52" data-lng-max="-122.35">
+
+  <!-- City outline for context -->
+  <path class="map-outline" d="M 240 0 L 380 50 L 400 120 L 390 250 L 380 350 L 360 450 L 340 520 L 300 580 L 200 600 L 120 580 L 80 500 L 60 400 L 50 300 L 60 200 L 80 120 L 120 60 L 180 20 Z" fill="none" stroke="#999" stroke-width="1" opacity="0.5" />
+
+  <!-- Neighborhood regions - Other SF first as background -->
+  <path data-neighborhood="Other SF" class="map-neighborhood" role="button" tabindex="0" d="M 0 0 L 500 0 L 500 600 L 0 600 Z" fill="#d8d8d0" />
+
+  <path data-neighborhood="Marina" class="map-neighborhood" role="button" tabindex="0" d="M 180 20 L 320 30 L 310 80 L 280 100 L 220 90 L 180 70 Z" fill="#c4d8e8" />
+
+  <path data-neighborhood="Richmond" class="map-neighborhood" role="button" tabindex="0" d="M 60 80 L 180 90 L 190 140 L 180 200 L 120 210 L 70 180 L 60 120 Z" fill="#d8c4e8" />
+
+  <path data-neighborhood="Financial District" class="map-neighborhood" role="button" tabindex="0" d="M 310 80 L 380 90 L 390 120 L 370 150 L 330 140 L 310 110 Z" fill="#c4d5e8" />
+
+  <path data-neighborhood="Yerba Buena" class="map-neighborhood" role="button" tabindex="0" d="M 310 110 L 370 120 L 370 160 L 340 170 L 300 160 L 290 130 Z" fill="#d8e8c4" />
+
+  <path data-neighborhood="Civic Center" class="map-neighborhood" role="button" tabindex="0" d="M 220 120 L 310 120 L 310 180 L 290 200 L 240 190 L 220 160 Z" fill="#e8c4c4" />
+
+  <path data-neighborhood="SoMa" class="map-neighborhood" role="button" tabindex="0" d="M 310 130 L 390 140 L 390 200 L 370 240 L 320 220 L 300 180 Z" fill="#d5c4e8" />
+
+  <path data-neighborhood="Golden Gate Park" class="map-neighborhood" role="button" tabindex="0" d="M 60 180 L 180 190 L 190 240 L 180 260 L 70 250 L 60 210 Z" fill="#b8d4b0" />
+
+  <path data-neighborhood="Haight" class="map-neighborhood" role="button" tabindex="0" d="M 180 190 L 280 200 L 280 240 L 260 260 L 190 250 L 180 220 Z" fill="#e8d8c4" />
+
+  <path data-neighborhood="Castro" class="map-neighborhood" role="button" tabindex="0" d="M 200 240 L 280 250 L 280 290 L 260 310 L 210 300 L 200 270 Z" fill="#e8c4d8" />
+
+  <path data-neighborhood="Mission" class="map-neighborhood" role="button" tabindex="0" d="M 240 200 L 360 210 L 360 290 L 340 340 L 280 330 L 240 280 Z" fill="#e8d5c4" />
+
+  <path data-neighborhood="Potrero Hill" class="map-neighborhood" role="button" tabindex="0" d="M 340 220 L 400 230 L 400 310 L 380 360 L 340 350 L 340 280 Z" fill="#c4e8d5" />
+
+  <path data-neighborhood="Sunset" class="map-neighborhood" role="button" tabindex="0" d="M 60 250 L 190 260 L 200 350 L 180 420 L 120 400 L 70 320 Z" fill="#c4c8e8" />
+
+  <!-- Count badges (on top) -->
+  <g class="map-badges">
+    <circle data-badge-bg-neighborhood="Mission" cx="310" cy="273" r="14" fill="#1a1714" opacity="0.8" />
+    <text data-badge-neighborhood="Mission" x="310" y="278" text-anchor="middle" fill="white" font-size="12" font-weight="600">0</text>
+
+    <circle data-badge-bg-neighborhood="SoMa" cx="368" cy="172" r="14" fill="#1a1714" opacity="0.8" />
+    <text data-badge-neighborhood="SoMa" x="368" y="177" text-anchor="middle" fill="white" font-size="12" font-weight="600">0</text>
+
+    <circle data-badge-bg-neighborhood="Potrero Hill" cx="375" cy="270" r="14" fill="#1a1714" opacity="0.8" />
+    <text data-badge-neighborhood="Potrero Hill" x="375" y="275" text-anchor="middle" fill="white" font-size="12" font-weight="600">0</text>
+
+    <circle data-badge-bg-neighborhood="Golden Gate Park" cx="100" cy="221" r="14" fill="#1a1714" opacity="0.8" />
+    <text data-badge-neighborhood="Golden Gate Park" x="100" y="226" text-anchor="middle" fill="white" font-size="12" font-weight="600">0</text>
+
+    <circle data-badge-bg-neighborhood="Financial District" cx="353" cy="84" r="14" fill="#1a1714" opacity="0.8" />
+    <text data-badge-neighborhood="Financial District" x="353" y="89" text-anchor="middle" fill="white" font-size="12" font-weight="600">0</text>
+
+    <circle data-badge-bg-neighborhood="Civic Center" cx="306" cy="168" r="14" fill="#1a1714" opacity="0.8" />
+    <text data-badge-neighborhood="Civic Center" x="306" y="173" text-anchor="middle" fill="white" font-size="12" font-weight="600">0</text>
+
+    <circle data-badge-bg-neighborhood="Marina" cx="244" cy="46" r="14" fill="#1a1714" opacity="0.8" />
+    <text data-badge-neighborhood="Marina" x="244" y="51" text-anchor="middle" fill="white" font-size="12" font-weight="600">0</text>
+
+    <circle data-badge-bg-neighborhood="Yerba Buena" cx="350" cy="135" r="14" fill="#1a1714" opacity="0.8" />
+    <text data-badge-neighborhood="Yerba Buena" x="350" y="140" text-anchor="middle" fill="white" font-size="12" font-weight="600">0</text>
+
+    <circle data-badge-bg-neighborhood="Haight" cx="232" cy="222" r="14" fill="#1a1714" opacity="0.8" />
+    <text data-badge-neighborhood="Haight" x="232" y="227" text-anchor="middle" fill="white" font-size="12" font-weight="600">0</text>
+
+    <circle data-badge-bg-neighborhood="Sunset" cx="95" cy="309" r="14" fill="#1a1714" opacity="0.8" />
+    <text data-badge-neighborhood="Sunset" x="95" y="314" text-anchor="middle" fill="white" font-size="12" font-weight="600">0</text>
+
+    <circle data-badge-bg-neighborhood="Richmond" cx="125" cy="164" r="14" fill="#1a1714" opacity="0.8" />
+    <text data-badge-neighborhood="Richmond" x="125" y="169" text-anchor="middle" fill="white" font-size="12" font-weight="600">0</text>
+
+    <circle data-badge-bg-neighborhood="Castro" cx="250" cy="267" r="14" fill="#1a1714" opacity="0.8" />
+    <text data-badge-neighborhood="Castro" x="250" y="272" text-anchor="middle" fill="white" font-size="12" font-weight="600">0</text>
+
+    <circle data-badge-bg-neighborhood="Other SF" cx="296" cy="192" r="14" fill="#1a1714" opacity="0.8" />
+    <text data-badge-neighborhood="Other SF" x="296" y="197" text-anchor="middle" fill="white" font-size="12" font-weight="600">0</text>
+  </g>
+</svg>

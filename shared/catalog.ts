@@ -28,19 +28,41 @@ export const EVENT_CATEGORY_LABELS = {
 
 export type EventCategory = keyof typeof EVENT_CATEGORY_LABELS;
 
-const NEIGHBORHOOD_ALIASES: Array<{ label: string; patterns: RegExp[] }> = [
-  { label: "Mission", patterns: [/\bmission\b/i, /dolores park/i, /mission st/i] },
-  { label: "SoMa", patterns: [/\bsoma\b/i, /south of market/i] },
-  { label: "Potrero Hill", patterns: [/potrero hill/i, /vermont & 20th/i] },
-  { label: "Golden Gate Park", patterns: [/golden gate park/i, /hippie hill/i] },
-  { label: "Financial District", patterns: [/financial district/i, /main to great highway/i] },
-  { label: "Civic Center", patterns: [/civic center/i, /main public library/i] },
-  { label: "Marina", patterns: [/marina/i, /fort mason/i] },
-  { label: "Yerba Buena", patterns: [/yerba buena/i] },
-  { label: "Haight", patterns: [/\bhaight\b/i] },
-  { label: "Sunset", patterns: [/sunset/i] },
-  { label: "Richmond", patterns: [/richmond/i] },
-  { label: "Castro", patterns: [/castro/i] },
+export interface NeighborhoodCenter {
+  lat: number;
+  lng: number;
+}
+
+export interface NeighborhoodAlias {
+  label: string;
+  center: NeighborhoodCenter;
+  patterns: RegExp[];
+}
+
+export const NEIGHBORHOOD_ALIASES: NeighborhoodAlias[] = [
+  { label: "Mission", center: { lat: 37.7599, lng: -122.4148 }, patterns: [/\bmission\b/i, /dolores park/i, /mission st/i] },
+  { label: "SoMa", center: { lat: 37.7785, lng: -122.3950 }, patterns: [/\bsoma\b/i, /south of market/i] },
+  { label: "Potrero Hill", center: { lat: 37.7605, lng: -122.3926 }, patterns: [/potrero hill/i, /vermont & 20th/i] },
+  { label: "Golden Gate Park", center: { lat: 37.7694, lng: -122.4862 }, patterns: [/golden gate park/i, /hippie hill/i] },
+  { label: "Financial District", center: { lat: 37.7946, lng: -122.3999 }, patterns: [/financial district/i, /main to great highway/i] },
+  { label: "Civic Center", center: { lat: 37.7793, lng: -122.4158 }, patterns: [/civic center/i, /main public library/i] },
+  { label: "Marina", center: { lat: 37.8015, lng: -122.4368 }, patterns: [/marina/i, /fort mason/i] },
+  { label: "Yerba Buena", center: { lat: 37.7854, lng: -122.4005 }, patterns: [/yerba buena/i] },
+  { label: "Haight", center: { lat: 37.7692, lng: -122.4481 }, patterns: [/\bhaight\b/i] },
+  { label: "Sunset", center: { lat: 37.7533, lng: -122.4946 }, patterns: [/sunset/i] },
+  { label: "Richmond", center: { lat: 37.7800, lng: -122.4784 }, patterns: [/richmond/i] },
+  { label: "Castro", center: { lat: 37.7609, lng: -122.4350 }, patterns: [/castro/i] },
+];
+
+export const OTHER_SF_NEIGHBORHOOD: NeighborhoodAlias = {
+  label: 'Other SF',
+  center: { lat: 37.7749, lng: -122.4194 },
+  patterns: [],
+};
+
+export const ALL_NEIGHBORHOODS: NeighborhoodAlias[] = [
+  ...NEIGHBORHOOD_ALIASES,
+  OTHER_SF_NEIGHBORHOOD,
 ];
 
 function normalizeText(value: string): string {
@@ -209,4 +231,43 @@ export function eventMatchesPushPreferences(
     matchesPreferredNeighborhood(deriveEventNeighborhood(event), preferences) &&
     matchesPreferredEventCategory(deriveEventCategory(event), preferences)
   );
+}
+
+export function findNearestNeighborhood(lat: number, lng: number): NeighborhoodAlias {
+  let best = ALL_NEIGHBORHOODS[0];
+  let bestDist = Infinity;
+  for (const entry of ALL_NEIGHBORHOODS) {
+    const dLat = lat - entry.center.lat;
+    const dLng = lng - entry.center.lng;
+    const dist = dLat * dLat + dLng * dLng;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = entry;
+    }
+  }
+  return best;
+}
+
+export interface NeighborhoodGroup {
+  restaurants: Restaurant[];
+  events: SFEvent[];
+}
+
+export function groupByNeighborhood(
+  restaurants: Restaurant[],
+  events: SFEvent[],
+): Map<string, NeighborhoodGroup> {
+  const groups = new Map<string, NeighborhoodGroup>();
+  for (const entry of ALL_NEIGHBORHOODS) {
+    groups.set(entry.label, { restaurants: [], events: [] });
+  }
+  for (const restaurant of restaurants) {
+    const key = groups.has(restaurant.neighborhood) ? restaurant.neighborhood : 'Other SF';
+    groups.get(key)!.restaurants.push(restaurant);
+  }
+  for (const event of events) {
+    const neighborhood = deriveEventNeighborhood(event);
+    groups.get(neighborhood)!.events.push(event);
+  }
+  return groups;
 }

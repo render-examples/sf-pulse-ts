@@ -1,0 +1,93 @@
+---
+import "../styles/global.css";
+import "../styles/map.css";
+import scriptUrl from "../scripts/map.ts?url";
+import svgContent from "../components/sf-neighborhoods.svg?raw";
+import { serializeForInlineScript } from "../../server/security.js";
+import { getInitialData } from "../server/api/utils.js";
+
+export const prerender = false;
+
+const data = await getInitialData();
+const pageData = serializeForInlineScript(data);
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    <title>SF Pulse — Neighborhood Map</title>
+    <meta
+      name="description"
+      content="Explore San Francisco neighborhoods — browse new restaurants and upcoming events by area."
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#171614" />
+    <link rel="icon" type="image/png" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div class="mapPage">
+      <header class="header">
+        <div class="headerInner">
+          <div class="logo">
+            <div class="logoMark">SF</div>
+            <div>
+              <div class="siteTitle">SF Pulse</div>
+              <div class="siteSubtitle">Neighborhood Map</div>
+            </div>
+          </div>
+          <div class="headerActions">
+            <a class="iconBtn" href="/" aria-label="Home">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                <polyline points="9 22 9 12 15 12 15 22"></polyline>
+              </svg>
+            </a>
+          </div>
+        </div>
+      </header>
+
+      <main class="mapMain">
+        <div class="mapContainer">
+          <div class="mapSvgWrap">
+            <Fragment set:html={svgContent} />
+            <div class="mapUserDot" data-user-dot></div>
+          </div>
+          <button class="mapLocationBtn" type="button" data-locate-btn>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="10"></circle>
+              <circle cx="12" cy="12" r="3"></circle>
+              <line x1="12" y1="2" x2="12" y2="4"></line>
+              <line x1="12" y1="20" x2="12" y2="22"></line>
+              <line x1="2" y1="12" x2="4" y2="12"></line>
+              <line x1="20" y1="12" x2="22" y2="12"></line>
+            </svg>
+            Use my location
+          </button>
+        </div>
+
+        <div class="mapPanel">
+          <div class="mapPanelEmpty" data-panel-empty>
+            Tap a neighborhood to explore
+          </div>
+          <div data-panel-content hidden></div>
+        </div>
+      </main>
+
+      <div class="toastRegion" aria-live="polite" data-toast-region></div>
+    </div>
+
+    <script is:inline type="application/json" id="sf-pulse-data" set:html={pageData}></script>
+    <script is:inline type="module" src={scriptUrl}></script>
+  </body>
+</html>
