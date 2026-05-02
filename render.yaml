@@ -68,6 +68,12 @@ projects:
                 sync: false
               - key: OPENAI_API_KEY
                 sync: false
+              - key: LLM_API_KEY
+                sync: false
+              - key: LLM_PROVIDER
+                sync: false
+              - key: LLM_MODEL
+                sync: false
 
           - type: cron
             name: sf-pulse-daily
