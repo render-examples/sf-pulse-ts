@@ -34,7 +34,9 @@ node --env-file=.env.local --import tsx bin/cron-refresh.ts
 
 **API handler abstraction:** `src/server/api/` contains request handlers shared between Astro API routes (`src/pages/api/`) and the standalone test HTTP server (`server/app.ts`). This avoids duplicating route logic.
 
-**Data flow:** `bin/cron-refresh/` scrapes sources (Eater SF, SFist, Michelin, FunCheap, FAMSF, Cal Academy) → `server/refresh.ts` orchestrates dedup + upsert via `server/storage.ts` → broadcasts SSE deltas → sends personalized push notifications.
+**Data flow:** Two-phase pipeline: Phase 1 fetches raw content from sources (Eater SF, SFist, Michelin, FunCheap, FAMSF, Cal Academy, DuckDuckGo). Phase 2 extracts structured data — via LLM (when `LLM_API_KEY` is set) or regex fallback (SFist, Michelin always use regex). Results merge → dedup → `server/refresh.ts` orchestrates upsert via `server/storage.ts` → broadcasts SSE deltas → sends personalized push notifications.
+
+**LLM extraction:** `server/llm/` provides a provider-agnostic structured extraction layer (OpenAI or Anthropic). Zod schemas define the extraction format. Graceful degradation: if `LLM_API_KEY` is not set, only regex-based sources (SFist, Michelin) produce results. Tests use a mock LLM client — no API keys needed.
 
 **AI parsing:** `bin/cron-refresh/openai.ts` owns the OpenAI client and two AI extraction functions: `parseDietaryFlagsWithAI()` (menu text → dietary flags) and `parseEaterArticleWithAI()` (HTML → restaurant list). Both require `OPENAI_API_KEY` — the module throws a clear error when the key is absent, no silent fallback. Tests inject a mock client via `setOpenAIClientForTests()` — the same pattern as `setLookupOverrideForTests` in `http.ts`. See `docs/openai-api-permissions.md` for required key permissions.
 
@@ -80,6 +82,8 @@ Run `node --import tsx/esm --test server/migrate.test.ts` before the full suite 
 ## Environment
 
 Requires Node.js >=22.12.0. Local secrets go in `.env.local` (gitignored). Only `DATABASE_URL` is required for the app; tests run without any env vars. See README.md for the full env var table.
+
+Optional LLM env vars for enhanced extraction: `LLM_API_KEY` (API key for OpenAI or Anthropic), `LLM_PROVIDER` (default: `openai`), `LLM_MODEL` (default: `gpt-4o-mini`). Without these, the pipeline runs with regex-only extraction.
 
 ## Deployment
 

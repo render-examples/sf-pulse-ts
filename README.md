@@ -235,6 +235,9 @@ That's it! Watch your workflow run
 | `NODE_ENV` | Set by scripts/runtime | `development`, `test`, or `production`. |
 | `RENDER_API_KEY` | Cron service only | Render API token used by the cron trigger to start workflows. |
 | `SF_PULSE_WORKFLOW_SLUG` | Cron service only | Render Workflow slug used to identify the daily-refresh workflow. |
+| `LLM_API_KEY` | No | API key for OpenAI or Anthropic. Enables LLM-based structured extraction from articles and menus. Without it, only regex-based sources (SFist, Michelin) produce results. |
+| `LLM_PROVIDER` | No | `openai` (default) or `anthropic`. |
+| `LLM_MODEL` | No | Model override. Defaults to `gpt-4o-mini` (OpenAI) or `claude-sonnet-4-20250514` (Anthropic). |
 
 To generate VAPID keys locally:
 

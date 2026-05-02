@@ -1,5 +1,6 @@
 import { MONTH_NAME_PATTERN } from "./constants.js";
 import { decodeHtmlEntities, normalizeEscapedHtmlText, normalizeWhitespace, stripHtml } from "./html.js";
+import { extractBodyText } from "./html.js";
 import { fetchPageHtml, searchWeb } from "./http.js";
 import { parseEaterArticleWithAI } from "./openai.js";
 import { isRecent } from "./recency.js";
@@ -7,6 +8,7 @@ import { fetchRss } from "./rss.js";
 import { normalizeDateText } from "../../shared/dates.ts";
 import { isBlockedRestaurantName } from "../../shared/restaurant-blocklist.ts";
 import type { NewRestaurant } from "./types.js";
+import type { RawArticle } from "./types.js";
 
 const OPENING_KEYWORDS =
   /\b(?:opens?|opened|openings?|debuts?|now open|coming soon|new restaurant|grand opening)\b/i;
@@ -711,4 +713,43 @@ export async function fetchMichelinCaliforniaSelection(
   }
 
   return [];
+}
+
+export async function fetchEaterSFRaw(): Promise<RawArticle[]> {
+  const items = await fetchRss("https://sf.eater.com/rss/index.xml");
+  const results: RawArticle[] = [];
+
+  for (const item of items) {
+    if (!isRecent(item.pubDate)) continue;
+    const combined = `${item.title} ${item.description}`;
+    if (!OPENING_KEYWORDS.test(combined)) continue;
+
+    const articleHtml = item.link ? await fetchPageHtml(item.link) : "";
+    results.push({
+      source: "eater",
+      url: item.link || "",
+      title: item.title,
+      pubDate: item.pubDate || null,
+      bodyText: articleHtml ? extractBodyText(articleHtml) : item.description,
+    });
+  }
+
+  return results;
+}
+
+export async function searchRestaurantsRaw(): Promise<RawArticle[]> {
+  const monthYear = new Date().toLocaleString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
+  const html = await searchWeb(`new restaurant openings San Francisco ${monthYear}`);
+  return [
+    {
+      source: "ddg",
+      url: "",
+      title: `DDG: new restaurant openings San Francisco ${monthYear}`,
+      pubDate: null,
+      bodyText: extractBodyText(html),
+    },
+  ];
 }
