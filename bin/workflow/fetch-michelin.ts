@@ -14,14 +14,31 @@ export const fetchMichelinTask = task(
     timeoutSeconds: 120,
   },
   async function fetchMichelin(): Promise<NewRestaurant[]> {
-    const run = await getCronRun(MICHELIN_CRON_JOB)
+    let run: Awaited<ReturnType<typeof getCronRun>>
+    try {
+      run = await getCronRun(MICHELIN_CRON_JOB)
+    } catch (error) {
+      console.error(
+        '[workflow] getCronRun failed:',
+        error instanceof Error ? `${error.message}\n${error.stack}` : error,
+      )
+      throw error
+    }
     if (!isCronJobDue(run?.last_ran_at, THREE_DAYS_MS)) {
       console.info('[workflow] michelin check not due, skipping')
       return []
     }
     console.info('[workflow] checking Michelin California selection...')
     const items = await fetchMichelinCaliforniaSelection()
-    await markCronRun(MICHELIN_CRON_JOB)
+    try {
+      await markCronRun(MICHELIN_CRON_JOB)
+    } catch (error) {
+      console.error(
+        '[workflow] markCronRun failed:',
+        error instanceof Error ? `${error.message}\n${error.stack}` : error,
+      )
+      throw error
+    }
     console.info(`[workflow] Michelin: ${items.length} candidates`)
     return items
   },

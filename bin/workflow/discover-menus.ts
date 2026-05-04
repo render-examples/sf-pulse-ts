@@ -12,7 +12,16 @@ export const discoverMenusTask = task(
     timeoutSeconds: 300,
   },
   async function discoverMenus(): Promise<{ checked: number; found: number }> {
-    const restaurants = await getRestaurantsNeedingMenuCheck()
+    let restaurants: Awaited<ReturnType<typeof getRestaurantsNeedingMenuCheck>>
+    try {
+      restaurants = await getRestaurantsNeedingMenuCheck()
+    } catch (error) {
+      console.error(
+        '[workflow] getRestaurantsNeedingMenuCheck failed:',
+        error instanceof Error ? `${error.message}\n${error.stack}` : error,
+      )
+      throw error
+    }
     console.info(
       `[workflow] ${restaurants.length} restaurants need menu check`,
     )

@@ -99,11 +99,18 @@ export async function broadcast(event: string, data: unknown): Promise<void> {
     return;
   }
 
-  if (redis.status === "wait") {
-    await redis.connect();
+  try {
+    if (redis.status === "wait") {
+      await redis.connect();
+    }
+    await redis.publish(REALTIME_CHANNEL, JSON.stringify({ event, data }));
+  } catch (error) {
+    console.warn(
+      `[realtime] redis publish failed, skipping broadcast:`,
+      error instanceof Error ? error.message : error,
+    );
+    publisher = null;
   }
-
-  await redis.publish(REALTIME_CHANNEL, JSON.stringify({ event, data }));
 }
 
 export function createSseResponse(signal: AbortSignal): Response {

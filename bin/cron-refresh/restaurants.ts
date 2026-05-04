@@ -2,6 +2,7 @@ import { MONTH_NAME_PATTERN } from "./constants.js";
 import { decodeHtmlEntities, normalizeEscapedHtmlText, normalizeWhitespace, stripHtml } from "./html.js";
 import { extractBodyText } from "./html.js";
 import { fetchPageHtml, searchWeb } from "./http.js";
+import { parseEaterArticleWithAI } from "./openai.js";
 import { isRecent } from "./recency.js";
 import { fetchRss } from "./rss.js";
 import { normalizeDateText } from "../../shared/dates.ts";
@@ -486,12 +487,7 @@ export async function fetchEaterSF(
         });
     const articleHtml = item.link ? await fetchPageHtml(item.link) : "";
     const articleRestaurants = articleHtml
-      ? parseEaterArticle(
-          articleHtml,
-          knownNames,
-          item.link || null,
-          openedDate,
-        )
+      ? await parseEaterArticleWithAI(articleHtml, knownNames, item.link || null, openedDate)
       : [];
 
     if (articleRestaurants.length > 0) {
