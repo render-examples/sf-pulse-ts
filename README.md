@@ -73,6 +73,7 @@ To confirm the pipeline works before the first scheduled cron fires at 7 AM PDT:
 
 1. Go to `sf-pulse-daily` in the Dashboard → **Trigger Run**.
 2. Check `sf-pulse-workflow` logs for task execution output.
+3. Ensure the `sf-pulse` web service frontend URL is displauying restaurant information as expected.
 
 ## Stack
 
