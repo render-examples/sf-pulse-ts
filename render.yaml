@@ -24,15 +24,11 @@ projects:
             startCommand: node dist/server/entry.mjs
             healthCheckPath: /api/healthz
             envVars:
-              - key: HOST
-                value: 0.0.0.0
-              - key: NODE_ENV
-                value: production
+              - fromGroup: Workshop envs
               - key: DATABASE_URL
                 fromDatabase:
                   name: sf-pulse-db
                   property: connectionString
-              - fromGroup: Workshop envs
               - key: CRON_SECRET
                 generateValue: true
               - key: REDIS_URL
@@ -48,8 +44,7 @@ projects:
             buildCommand: npm ci --include=dev && npm run build
             startCommand: node dist/bin/workflow.cjs
             envVars:
-              - key: NODE_ENV
-                value: production
+              - fromGroup: Workshop envs
               - key: DATABASE_URL
                 fromDatabase:
                   name: sf-pulse-db
@@ -59,7 +54,6 @@ projects:
                   name: sf-pulse-realtime
                   type: keyvalue
                   property: connectionString
-              - fromGroup: Workshop envs
 
           - type: cron
             name: sf-pulse-daily
