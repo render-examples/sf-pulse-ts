@@ -13,19 +13,34 @@ Render deployment is defined in `render.yaml`:
 - **Database** (`sf-pulse-db`): PostgreSQL.
 - **Key-value** (`sf-pulse-realtime`): Redis for cross-instance SSE fanout.
 
-The workflow service (`sf-pulse-workflow`) must be created manually in the Render Dashboard as a **Workflow** — Render Workflows are not supported in Blueprint YAML. See [Deploy to Render](#deploy-to-render) for instructions.
+The workflow service (`sf-pulse-workflow`) must be created manually in the Render Dashboard as a **Workflow** — Render Workflows are not supported in Blueprint YAML. See below for instructions.
 
 `Dockerfile` provides a production image based on `node:22-slim`.
 
 For production, supply environment variables through the host platform. Do not rely on `.env.local` outside local development.
 
-### Deploy the Blueprint
+### Step 1: Create the `sf-pulse-env` env group
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2Fjoeybaker%2Fsf-pulse)
+Before deploying the Blueprint, create a Render env group that all services will share.
 
-This Blueprint creates four services from `render.yaml`: web, cron trigger, PostgreSQL, and Redis. You still need to follow the steps below to create the workflow service.
+Dashboard → **Env Groups** → **New Env Group** → name it `sf-pulse-env`.
 
-### Create the workflow service manually
+Add the following variables:
+
+| Variable | Value |
+| --- | --- |
+| `CRON_SECRET` | Generate with `openssl rand -hex 32` |
+| `HOST` | `0.0.0.0` |
+| `NODE_ENV` | `production` |
+| `LLM_API_KEY` | Your OpenAI or Anthropic API key |
+| `LLM_PROVIDER` | _(optional)_ `openai` or `anthropic` — inferred from the key if omitted |
+| `LLM_MODEL` | _(optional)_ model override |
+| `DATABASE_URL` | Leave empty for now — fill in after step 3 |
+| `REDIS_URL` | Leave empty for now — fill in after step 3 |
+| `VAPID_PUBLIC_KEY` | _(optional)_ required only for push notifications |
+| `VAPID_PRIVATE_KEY` | _(optional)_ required only for push notifications |
+
+### Step 2: Create the workflow service manually
 
 Render Workflows are not supported in Blueprint YAML, so `sf-pulse-workflow` must be created by hand in the Dashboard.
 
@@ -33,43 +48,19 @@ Render Workflows are not supported in Blueprint YAML, so `sf-pulse-workflow` mus
 2. Set **Name** to `sf-pulse-workflow`.
 3. Set **Start Command** to `node dist/bin/workflow.cjs`.
 4. Set **Plan** to Starter.
-6. Add environment variables:
-   - `NODE_ENV` = `production`
-   - `DATABASE_URL` — from the `sf-pulse-db` database (connection string)
-   - `REDIS_URL` — from the `sf-pulse-realtime` key-value store (connection string)
-   - `LLM_API_KEY` _(optional)_ — OpenAI or Anthropic key; enables LLM-based extraction for all sources. Without it only SFist and Michelin (regex-based) produce results.
-   - `LLM_PROVIDER` _(optional)_ — `openai` (default) or `anthropic`
-   - `LLM_MODEL` _(optional)_ — model override; defaults to `gpt-4o-mini` or `claude-sonnet-4-20250514`
-6. Save and deploy. Once it's live, go to **Settings** and note the **Slug** value for step 4.
+5. Under **Environment**, add the `sf-pulse-env` env group.
+6. Save and deploy. Once it's live, go to **Settings** and note the **Slug** — you'll need it for `SF_PULSE_WORKFLOW_SLUG` in step 3.
 
-### Configure the web service
+### Step 3: Deploy the Blueprint
 
-Two settings that MCP/Blueprint don't set automatically — do these in the Dashboard after the Blueprint deploys:
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2Fjoeybaker%2Fsf-pulse)
 
-**Dashboard → `sf-pulse` → Settings → Deploy → Pre-Deploy Command:**
-```
-node dist/bin/migrate.cjs
-```
+This Blueprint creates four services from `render.yaml`: web, cron trigger, PostgreSQL, and Redis. All services pull shared config from the `sf-pulse-env` env group created in step 1.
 
-**Dashboard → `sf-pulse` → Settings → Health & Alerts → Health Check Path:**
-```
-/api/healthz
-```
+Once the Blueprint deploys:
 
-Then trigger a manual redeploy so migrations run before the server starts.
-
-### Fill in secrets
-
-These are `sync: false` env vars on the Blueprint-created services from step 1 — not on `sf-pulse-workflow`. Set them in the Render Dashboard after the Blueprint deploys.
-
-**`sf-pulse` (web service):**
-
-| Variable | How to get it |
-| --- | --- |
-| `VAPID_PUBLIC_KEY` | Run `npx web-push generate-vapid-keys` |
-| `VAPID_PRIVATE_KEY` | Same command — public and private are generated together |
-
-**`sf-pulse-daily` (cron service):**
+1. Copy the `DATABASE_URL` from the `sf-pulse-db` database and the `REDIS_URL` from the `sf-pulse-realtime` key-value store, and set them in the `sf-pulse-env` env group.
+2. Set these two env vars on the `sf-pulse-daily` cron service:
 
 | Variable | How to get it |
 | --- | --- |
