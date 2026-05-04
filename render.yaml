@@ -32,10 +32,7 @@ projects:
                 fromDatabase:
                   name: sf-pulse-db
                   property: connectionString
-              - key: VAPID_PUBLIC_KEY
-                sync: false
-              - key: VAPID_PRIVATE_KEY
-                sync: false
+              - fromGroup: Workshop envs
               - key: CRON_SECRET
                 generateValue: true
               - key: REDIS_URL
@@ -62,18 +59,7 @@ projects:
                   name: sf-pulse-realtime
                   type: keyvalue
                   property: connectionString
-              - key: VAPID_PUBLIC_KEY
-                sync: false
-              - key: VAPID_PRIVATE_KEY
-                sync: false
-              - key: OPENAI_API_KEY
-                sync: false
-              - key: LLM_API_KEY
-                sync: false
-              - key: LLM_PROVIDER
-                sync: false
-              - key: LLM_MODEL
-                sync: false
+              - fromGroup: Workshop envs
 
           - type: cron
             name: sf-pulse-daily
