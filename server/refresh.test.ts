@@ -283,7 +283,6 @@ describe("applyDiscoveredItems()", () => {
       {
         neighborhoods: ["Mission"],
         cuisines: [],
-        dietary_flags: [],
         event_categories: [],
       },
       pool,
@@ -294,7 +293,6 @@ describe("applyDiscoveredItems()", () => {
       {
         neighborhoods: ["Sunset"],
         cuisines: [],
-        dietary_flags: [],
         event_categories: [],
       },
       pool,

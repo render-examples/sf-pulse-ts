@@ -1,15 +1,12 @@
 import { applyDiscoveredItems } from "../../server/refresh.js";
 import {
   getCronRun,
-  getRestaurantsNeedingMenuCheck,
   markCronRun,
-  updateRestaurantMenu,
 } from "../../server/storage.js";
 import { normalizeDateText } from "../../shared/dates.ts";
 import { buildEventIdentityKey } from "../../shared/event-identity.ts";
 import { stripHtml } from "./html.js";
 import { searchWeb } from "./http.js";
-import { discoverMenu } from "./menu.js";
 import {
   extractEvents,
   fetchCalAcademy,
@@ -254,22 +251,4 @@ export async function main(): Promise<void> {
     console.info("[cron] nothing new");
   }
 
-  console.info("[cron] starting menu discovery...");
-  try {
-    const restaurants = await getRestaurantsNeedingMenuCheck();
-    console.info(`[cron] ${restaurants.length} restaurants need menu check`);
-
-    for (const restaurant of restaurants) {
-      try {
-        console.info(`[cron] checking menu for: ${restaurant.name}`);
-        const { menuUrl, dietaryFlags } = await discoverMenu(restaurant.name);
-        await updateRestaurantMenu(restaurant.id, menuUrl, dietaryFlags);
-        console.info(`[cron] found menu for ${restaurant.name}`);
-      } catch (error) {
-        console.error(`[cron] menu check failed for ${restaurant.name}:`, error);
-      }
-    }
-  } catch (error) {
-    console.error("[cron] menu discovery phase failed:", error);
-  }
 }

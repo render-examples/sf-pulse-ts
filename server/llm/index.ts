@@ -2,7 +2,7 @@ import type { LLMClient, ProviderConfig } from './types.js'
 import { createOpenAIClient } from './providers/openai.js'
 import { createAnthropicClient } from './providers/anthropic.js'
 
-export type { LLMClient, ProviderConfig, RawArticle, RawMenuPage } from './types.js'
+export type { LLMClient, ProviderConfig, RawArticle } from './types.js'
 export { extractStructured } from './extract.js'
 
 const DEFAULT_MODELS: Record<string, string> = {

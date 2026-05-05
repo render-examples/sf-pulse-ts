@@ -1,16 +1,3 @@
-export interface DietaryFlag {
-  available: boolean;
-  confidence: "confirmed" | "inferred";
-}
-
-export interface DietaryFlags {
-  gluten_free: DietaryFlag;
-  vegan: DietaryFlag;
-  vegetarian: DietaryFlag;
-}
-
-export type DietaryFlagKey = keyof DietaryFlags;
-
 export interface Restaurant {
   id: number;
   name: string;
@@ -30,9 +17,6 @@ export interface Restaurant {
   is_upcoming: boolean;
   highlight_kind: "opening" | "michelin";
   source_url: string | null;
-  menu_url: string | null;
-  menu_checked_at: string | null;
-  dietary_flags: DietaryFlags | null;
 }
 
 export interface SFEvent {
@@ -65,7 +49,6 @@ export interface InitialData {
 export interface PushPreferences {
   neighborhoods: string[];
   cuisines: string[];
-  dietary_flags: DietaryFlagKey[];
   event_categories: string[];
 }
 

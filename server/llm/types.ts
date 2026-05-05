@@ -24,10 +24,3 @@ export interface RawArticle {
   jsonLd?: unknown
 }
 
-export interface RawMenuPage {
-  restaurantName: string
-  restaurantId: number
-  menuUrl: string
-  text: string
-  currentCuisine: string
-}

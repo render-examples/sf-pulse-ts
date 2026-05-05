@@ -1,21 +1,8 @@
 import type {
-  DietaryFlagKey,
-  DietaryFlags,
   PushPreferences,
   Restaurant,
   SFEvent,
 } from "./types.ts";
-
-export const DIETARY_FLAG_DEFINITIONS: Array<{
-  key: DietaryFlagKey;
-  symbol: string;
-  label: string;
-  color: string;
-}> = [
-  { key: "gluten_free", symbol: "GF", label: "Gluten-free", color: "#d4a017" },
-  { key: "vegan", symbol: "VG", label: "Vegan", color: "#4caf50" },
-  { key: "vegetarian", symbol: "V", label: "Vegetarian", color: "#66bb6a" },
-];
 
 export const EVENT_CATEGORY_LABELS = {
   art: "Art",
@@ -81,11 +68,6 @@ export function normalizePushPreferences(
   return {
     neighborhoods: uniqueSorted((preferences?.neighborhoods ?? []).map((value) => value.trim())),
     cuisines: uniqueSorted((preferences?.cuisines ?? []).map((value) => value.trim())),
-    dietary_flags: uniqueSorted(
-      (preferences?.dietary_flags ?? []).map((value) => String(value).trim()),
-    ).filter((value): value is DietaryFlagKey =>
-      DIETARY_FLAG_DEFINITIONS.some((definition) => definition.key === value),
-    ),
     event_categories: uniqueSorted(
       (preferences?.event_categories ?? []).map((value) => String(value).trim()),
     ).filter((value): value is EventCategory => value in EVENT_CATEGORY_LABELS),
@@ -96,7 +78,6 @@ export function hasPushPreferences(preferences: PushPreferences): boolean {
   return (
     preferences.neighborhoods.length > 0 ||
     preferences.cuisines.length > 0 ||
-    preferences.dietary_flags.length > 0 ||
     preferences.event_categories.length > 0
   );
 }
@@ -159,13 +140,6 @@ export function getEventCategoryOptions(events: SFEvent[]): EventCategory[] {
   );
 }
 
-export function hasDietaryFlag(
-  dietaryFlags: DietaryFlags | null,
-  flag: DietaryFlagKey,
-): boolean {
-  return Boolean(dietaryFlags?.[flag]?.available);
-}
-
 export function matchesPreferredNeighborhood(
   neighborhood: string,
   preferences: PushPreferences,
@@ -190,17 +164,6 @@ export function matchesPreferredCuisine(
   return preferences.cuisines.some((value) => normalizeText(value) === normalized);
 }
 
-export function matchesPreferredDietaryFlags(
-  dietaryFlags: DietaryFlags | null,
-  preferences: PushPreferences,
-): boolean {
-  if (preferences.dietary_flags.length === 0) {
-    return true;
-  }
-
-  return preferences.dietary_flags.some((flag) => hasDietaryFlag(dietaryFlags, flag));
-}
-
 export function matchesPreferredEventCategory(
   category: EventCategory,
   preferences: PushPreferences,
@@ -218,8 +181,7 @@ export function restaurantMatchesPushPreferences(
 ): boolean {
   return (
     matchesPreferredNeighborhood(restaurant.neighborhood, preferences) &&
-    matchesPreferredCuisine(restaurant.cuisine, preferences) &&
-    matchesPreferredDietaryFlags(restaurant.dietary_flags, preferences)
+    matchesPreferredCuisine(restaurant.cuisine, preferences)
   );
 }
 

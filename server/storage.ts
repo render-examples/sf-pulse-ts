@@ -12,17 +12,6 @@ import { buildRestaurantIdentityKey } from "../shared/restaurant-identity.ts";
 import { normalizePushPreferences } from "../shared/catalog.ts";
 import type { PushPreferences } from "../shared/types.ts";
 
-export interface DietaryFlag {
-  available: boolean;
-  confidence: "confirmed" | "inferred";
-}
-
-export interface DietaryFlags {
-  gluten_free: DietaryFlag;
-  vegan: DietaryFlag;
-  vegetarian: DietaryFlag;
-}
-
 export interface Restaurant {
   id: number;
   name: string;
@@ -36,9 +25,6 @@ export interface Restaurant {
   is_upcoming: boolean;
   highlight_kind: "opening" | "michelin";
   source_url: string | null;
-  menu_url: string | null;
-  menu_checked_at: string | null;
-  dietary_flags: DietaryFlags | null;
   added_at: string;
 }
 
@@ -262,9 +248,6 @@ export type NewRestaurant = Omit<
   Restaurant,
   | "id"
   | "added_at"
-  | "menu_url"
-  | "menu_checked_at"
-  | "dietary_flags"
   | "highlight_kind"
   | "opened_start_date"
   | "opened_end_date"
@@ -674,41 +657,3 @@ export async function markCronRun(jobName: string, pool?: Pool): Promise<CronRun
   ) as Promise<CronRun>;
 }
 
-// ── Menu / dietary ────────────────────────────────────────────────────────────
-
-/**
- * Restaurants that are eligible for a menu check:
- * - Already opened (opened_date not containing 'upcoming')
- * - Never checked OR last checked > 7 days ago
- */
-export function getRestaurantsNeedingMenuCheck(pool?: Pool): Promise<Restaurant[]> {
-  return q<Restaurant>(
-    `SELECT * FROM restaurants
-     WHERE opened_date NOT ILIKE '%upcoming%'
-       AND (menu_checked_at IS NULL
-            OR menu_checked_at < NOW() - INTERVAL '7 days')
-     ORDER BY menu_checked_at ASC NULLS FIRST`,
-    [],
-    pool
-  );
-}
-
-/**
- * Update a restaurant's menu URL, dietary flags, and mark when checked.
- */
-export async function updateRestaurantMenu(
-  id: number,
-  menuUrl: string | null,
-  dietaryFlags: DietaryFlags | null,
-  pool?: Pool
-): Promise<void> {
-  await exec(
-    `UPDATE restaurants
-     SET menu_url = $1,
-         dietary_flags = $2,
-         menu_checked_at = NOW()
-     WHERE id = $3`,
-    [menuUrl, dietaryFlags ? JSON.stringify(dietaryFlags) : null, id],
-    pool
-  );
-}

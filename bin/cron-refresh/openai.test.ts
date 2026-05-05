@@ -1,7 +1,6 @@
 import { describe, it, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  parseDietaryFlagsWithAI,
   parseEaterArticleWithAI,
   setOpenAIClientForTests,
 } from './openai.js'
@@ -19,63 +18,6 @@ function fakeClient(content: string): FakeClient {
     },
   }
 }
-
-describe('parseDietaryFlagsWithAI()', () => {
-  afterEach(() => setOpenAIClientForTests(undefined))
-
-  it('throws with actionable message when OPENAI_API_KEY is not set', async () => {
-    const saved = process.env.OPENAI_API_KEY
-    delete process.env.OPENAI_API_KEY
-    try {
-      await assert.rejects(
-        () => parseDietaryFlagsWithAI('menu text'),
-        /OPENAI_API_KEY is required/,
-      )
-    } finally {
-      if (saved !== undefined) process.env.OPENAI_API_KEY = saved
-    }
-  })
-
-  it('returns parsed DietaryFlags from AI response', async () => {
-    const flags = {
-      gluten_free: { available: true, confidence: 'confirmed' },
-      vegan: { available: false, confidence: 'inferred' },
-      vegetarian: { available: true, confidence: 'confirmed' },
-    }
-    setOpenAIClientForTests(fakeClient(JSON.stringify(flags)))
-    const result = await parseDietaryFlagsWithAI(
-      'Gluten-free pasta. Vegetarian Pad Thai.',
-    )
-    assert.deepEqual(result, flags)
-  })
-
-  it('throws on empty response content', async () => {
-    setOpenAIClientForTests({
-      chat: {
-        completions: {
-          create: async () => ({ choices: [{ message: { content: '' } }] }),
-        },
-      },
-    })
-    await assert.rejects(
-      () => parseDietaryFlagsWithAI('menu'),
-      /empty response/,
-    )
-  })
-
-  it('propagates API errors without swallowing them', async () => {
-    setOpenAIClientForTests({
-      chat: {
-        completions: {
-          create: async () => {
-            throw new Error('rate limit')
-          },
-        },
-      },
-    })
-    await assert.rejects(() => parseDietaryFlagsWithAI('menu'), /rate limit/)
-  })
-})
 
 describe('parseEaterArticleWithAI()', () => {
   afterEach(() => setOpenAIClientForTests(undefined))

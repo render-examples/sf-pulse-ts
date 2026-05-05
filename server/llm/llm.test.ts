@@ -6,14 +6,12 @@ import { extractStructured } from "./extract.js";
 import {
   RestaurantExtractionSchema,
   EventExtractionSchema,
-  MenuAnalysisSchema,
 } from "./schemas.js";
 import {
   extractRestaurantsFromArticles,
   extractEventsFromArticles,
-  analyzeMenu,
 } from "./pipeline.js";
-import type { RawArticle, RawMenuPage } from "./types.js";
+import type { RawArticle } from "./types.js";
 import { extractBodyText } from "../../bin/cron-refresh/html.js";
 
 // ── Mock LLM Client ────────────────────────────────────────────────
@@ -101,46 +99,6 @@ describe("EventExtractionSchema", () => {
     });
     assert.equal(result.events[0].time, null);
     assert.equal(result.events[0].description, null);
-  });
-});
-
-describe("MenuAnalysisSchema", () => {
-  it("accepts valid menu analysis", () => {
-    const result = MenuAnalysisSchema.parse({
-      dietary_flags: {
-        gluten_free: { available: true, confidence: "confirmed" },
-        vegan: { available: true, confidence: "inferred" },
-        vegetarian: { available: true, confidence: "confirmed" },
-      },
-      refined_cuisine: "Northern Thai",
-    });
-    assert.equal(result.dietary_flags.gluten_free.available, true);
-    assert.equal(result.refined_cuisine, "Northern Thai");
-  });
-
-  it("accepts null refined_cuisine", () => {
-    const result = MenuAnalysisSchema.parse({
-      dietary_flags: {
-        gluten_free: { available: false, confidence: "inferred" },
-        vegan: { available: false, confidence: "inferred" },
-        vegetarian: { available: false, confidence: "inferred" },
-      },
-      refined_cuisine: null,
-    });
-    assert.equal(result.refined_cuisine, null);
-  });
-
-  it("rejects invalid confidence value", () => {
-    assert.throws(() => {
-      MenuAnalysisSchema.parse({
-        dietary_flags: {
-          gluten_free: { available: true, confidence: "maybe" },
-          vegan: { available: false, confidence: "inferred" },
-          vegetarian: { available: false, confidence: "inferred" },
-        },
-        refined_cuisine: null,
-      });
-    });
   });
 });
 
@@ -261,40 +219,6 @@ describe("extractEventsFromArticles()", () => {
     assert.equal(results.length, 1);
     assert.equal(results[0].title, "Outside Lands 2026");
     assert.equal(results[0].source_url, "https://sf.funcheap.com/test");
-  });
-});
-
-describe("analyzeMenu()", () => {
-  it("returns dietary flags and refined cuisine", async () => {
-    const client = createMockLLMClient(
-      new Map([
-        [
-          "analyze restaurant menu",
-          {
-            dietary_flags: {
-              gluten_free: { available: true, confidence: "confirmed" },
-              vegan: { available: true, confidence: "inferred" },
-              vegetarian: { available: true, confidence: "confirmed" },
-            },
-            refined_cuisine: "Neapolitan Pizza",
-          },
-        ],
-      ]),
-    );
-
-    const page: RawMenuPage = {
-      restaurantName: "Tony's Pizza",
-      restaurantId: 42,
-      menuUrl: "https://tonyspizza.com/menu",
-      text: "Margherita (GF available) ... Vegan cheese option ...",
-      currentCuisine: "New opening",
-    };
-
-    const result = await analyzeMenu(client, page);
-    assert.ok(result);
-    assert.equal(result.dietaryFlags.gluten_free.available, true);
-    assert.equal(result.dietaryFlags.gluten_free.confidence, "confirmed");
-    assert.equal(result.refinedCuisine, "Neapolitan Pizza");
   });
 });
 

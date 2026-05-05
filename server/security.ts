@@ -38,7 +38,6 @@ function isTrustedPushHost(hostname: string): boolean {
 const pushPreferencesSchema = z.object({
   neighborhoods: z.array(z.string().min(1).max(120)).default([]),
   cuisines: z.array(z.string().min(1).max(160)).default([]),
-  dietary_flags: z.array(z.enum(["gluten_free", "vegan", "vegetarian"])).default([]),
   event_categories: z.array(z.enum(["art", "community", "festival", "film", "market", "music"])).default([]),
 }).strict().transform((value) => normalizePushPreferences(value));
 

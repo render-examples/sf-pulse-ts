@@ -37,12 +37,6 @@ export {
   fetchCalAcademy,
   parseCalAcademyPage,
 } from "./cron-refresh/events.js";
-export {
-  extractUrls,
-  findMenuUrls,
-  parseDietaryFlags,
-  discoverMenu,
-} from "./cron-refresh/menu.js";
 export type {
   RssItem,
   NewRestaurant,

@@ -1,14 +1,11 @@
 import type { NewRestaurant, NewEvent } from '../../bin/cron-refresh/types.js'
-import type { DietaryFlags } from '../storage.js'
-import type { LLMClient, RawArticle, RawMenuPage } from './types.js'
+import type { LLMClient, RawArticle } from './types.js'
 import { extractStructured } from './extract.js'
 import {
   RestaurantExtractionSchema,
   RESTAURANT_EXTRACTION_PROMPT,
   EventExtractionSchema,
   EVENT_EXTRACTION_PROMPT,
-  MenuAnalysisSchema,
-  MENU_ANALYSIS_PROMPT,
 } from './schemas.js'
 
 const MAX_BATCH_CHARS = 12_000 // ~3K tokens, well under 6K token target
@@ -118,22 +115,3 @@ export async function extractEventsFromArticles(
   return results
 }
 
-export async function analyzeMenu(
-  client: LLMClient,
-  page: RawMenuPage,
-): Promise<{ dietaryFlags: DietaryFlags; refinedCuisine: string | null } | null> {
-  const text = `Restaurant: ${page.restaurantName}\nCurrent cuisine: ${page.currentCuisine}\n\nMenu text:\n${page.text}`
-
-  const extraction = await extractStructured(client, {
-    schema: MenuAnalysisSchema,
-    prompt: MENU_ANALYSIS_PROMPT,
-    text,
-  })
-
-  if (!extraction) return null
-
-  return {
-    dietaryFlags: extraction.dietary_flags,
-    refinedCuisine: extraction.refined_cuisine,
-  }
-}
