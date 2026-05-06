@@ -308,10 +308,6 @@ body:not(:has(:target)) .tabRestaurants,
   display: grid;
 }
 
-.page:has(#diagram:target) .main {
-  max-width: min(1800px, calc(100vw - 40px));
-}
-
 .diagramFrameWrap {
   min-height: 0;
   border: 1px solid var(--border);
