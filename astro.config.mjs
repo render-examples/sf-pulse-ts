@@ -1,20 +1,31 @@
-import { defineConfig } from "astro/config";
-import node from "@astrojs/node";
-import path from "node:path";
+import { defineConfig } from 'astro/config'
+import node from '@astrojs/node'
+import react from '@astrojs/react'
+import tailwind from '@astrojs/tailwind'
+import path from 'node:path'
 
 export default defineConfig({
   adapter: node({
-    mode: "standalone",
+    mode: 'standalone',
   }),
-  output: "static",
+  output: 'static',
   server: {
     host: true,
   },
+  integrations: [
+    react(),
+    tailwind({
+      applyBaseStyles: false,
+    }),
+  ],
   vite: {
     resolve: {
       alias: {
-        "@shared": path.resolve("./shared"),
+        '@shared': path.resolve('./shared'),
       },
     },
+    ssr: {
+      noExternal: ['workflow-visualizer'],
+    },
   },
-});
+})
