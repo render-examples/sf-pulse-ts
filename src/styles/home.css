@@ -274,7 +274,8 @@
   stroke-linejoin: round;
 }
 
-.page:not(:has(#events:target)):not(:has(#diagram:target)) .tabRestaurants,
+body:not(:has(:target)) .tabRestaurants,
+.page:has(#restaurants:target) .tabRestaurants,
 .page:has(#events:target) .tabEvents,
 .page:has(#diagram:target) .tabDiagram {
   background: var(--surface);
