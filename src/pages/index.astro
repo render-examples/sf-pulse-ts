@@ -204,7 +204,7 @@ const eventCategoryOptions = getEventCategoryOptions(data.events);
               </svg>
               Events
             </a>
-            <a class="tab tabDiagram" href="/diagram">
+            <a class="tab tabDiagram" href="#diagram">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <circle cx="6" cy="6" r="3"></circle>
                 <circle cx="18" cy="6" r="3"></circle>
@@ -304,6 +304,25 @@ const eventCategoryOptions = getEventCategoryOptions(data.events);
                 No events match your filter.
               </p>
             </div>
+          </div>
+        </section>
+
+        <section class="section diagramSection" id="diagram">
+          <div class="sectionHeader">
+            <div>
+              <h2 class="sectionTitle">Workflow Diagram</h2>
+              <p class="sectionMeta">
+                Daily refresh pipeline — bin/workflow/daily-refresh.ts
+              </p>
+            </div>
+          </div>
+          <div class="diagramFrameWrap">
+            <iframe
+              class="diagramFrame"
+              src="/diagram"
+              title="Daily refresh workflow diagram"
+              loading="lazy"
+            ></iframe>
           </div>
         </section>
 
