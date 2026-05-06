@@ -53,7 +53,7 @@ Render Workflows are not supported in Blueprint YAML, so `sf-pulse-workflow` mus
 
 ### Step 3: Deploy the Blueprint
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2Fjoeybaker%2Fsf-pulse)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2Frender-examples%2Fsf-pulse-ts)
 
 This Blueprint creates four services from `render.yaml`: web, cron trigger, PostgreSQL, and Redis. All services pull shared config from the `sf-pulse-env` env group created in step 1.
 
