@@ -27,5 +27,8 @@ export default defineConfig({
     ssr: {
       noExternal: ['workflow-visualizer'],
     },
+    optimizeDeps: {
+      include: ['react', 'react-dom', 'react-dom/client'],
+    },
   },
 })
