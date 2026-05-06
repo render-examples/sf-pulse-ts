@@ -36,7 +36,7 @@
     "react-dom": "^18.3.0",
     "tailwindcss": "^3.4.0",
     "web-push": "^3.6.7",
-    "workflow-visualizer": "github:render-examples/workflow-visualizer",
+    "workflow-visualizer": "github:render-examples/workflow-visualizer#1813081b70e444f8eb745132aa636608f5fd1abf",
     "zod": "^3.24.2",
     "zod-to-json-schema": "^3.25.2"
   },
