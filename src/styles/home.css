@@ -308,7 +308,7 @@
 }
 
 .page:has(#diagram:target) .main {
-  max-width: 1248px;
+  max-width: min(1800px, calc(100vw - 40px));
 }
 
 .diagramFrameWrap {
