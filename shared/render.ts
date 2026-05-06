@@ -1,11 +1,10 @@
 import { buildTimeline } from "./timeline.ts";
 import {
-  DIETARY_FLAG_DEFINITIONS,
   deriveEventCategory,
   deriveEventNeighborhood,
   formatEventCategory,
 } from "./catalog.ts";
-import type { DietaryFlags, Restaurant, SFEvent } from "./types.ts";
+import type { Restaurant, SFEvent } from "./types.ts";
 
 export function escapeHtml(value: string): string {
   return value
@@ -43,15 +42,6 @@ function pinIcon(): string {
   `;
 }
 
-function menuIcon(): string {
-  return `
-    <svg viewBox="0 0 24 24" aria-hidden="true" style="width:12px;height:12px;display:inline;vertical-align:middle;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round">
-      <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path>
-      <line x1="4" y1="22" x2="4" y2="15"></line>
-    </svg>
-  `;
-}
-
 function michelinIcon(): string {
   return `
     <svg viewBox="0 0 24 24" aria-hidden="true" class="michelinIcon">
@@ -59,30 +49,6 @@ function michelinIcon(): string {
       <circle cx="12" cy="12" r="3.25" fill="var(--surface)"></circle>
     </svg>
   `;
-}
-
-export function renderDietaryBadges(flags: DietaryFlags | null): string {
-  if (!flags) {
-    return "";
-  }
-
-  const badges = DIETARY_FLAG_DEFINITIONS.filter((diet) => flags[diet.key].available);
-  if (badges.length === 0) {
-    return "";
-  }
-
-  return `<span class="dietaryBadges">${badges
-    .map((diet) => {
-      const flag = flags[diet.key];
-      const classes = ["dietaryBadge"];
-      if (flag.confidence === "inferred") {
-        classes.push("dietaryInferred");
-      }
-      return `<span class="${classes.join(" ")}" style="border-color:${diet.color};color:${diet.color}" title="${escapeHtml(
-        `${diet.label}${flag.confidence === "inferred" ? " (likely)" : ""}`,
-      )}">${diet.symbol}</span>`;
-    })
-    .join("")}</span>`;
 }
 
 export function renderRestaurantTableBody(restaurants: Restaurant[]): string {
@@ -104,11 +70,6 @@ export function renderRestaurantTableBody(restaurants: Restaurant[]): string {
           <td>
             <div class="cellPrimary">
               <a class="detailLink" href="${restaurantDetailHref(restaurant.id)}">${escapeHtml(restaurant.name)}</a>
-              ${
-                restaurant.menu_url
-                  ? `<a href="${escapeHtml(restaurant.menu_url)}" target="_blank" rel="noopener noreferrer" class="menuLink" title="View menu">${menuIcon()} Menu</a>`
-                  : ""
-              }
             </div>
             ${
               restaurant.address
@@ -123,7 +84,6 @@ export function renderRestaurantTableBody(restaurants: Restaurant[]): string {
           </td>
           <td class="colNeighborhood"><span class="badge">${escapeHtml(restaurant.neighborhood)}</span></td>
           <td class="colCuisine tableMuted">${escapeHtml(restaurant.cuisine)}</td>
-          <td class="colDiet">${renderDietaryBadges(restaurant.dietary_flags)}</td>
           <td>${
             restaurant.highlight_kind === "michelin"
               ? `<span class="michelinOpened">${michelinIcon()}<span>${escapeHtml(restaurant.opened_date)}</span></span>`

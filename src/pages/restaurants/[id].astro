@@ -2,7 +2,6 @@
 import "../../styles/global.css";
 import "../../styles/detail.css";
 import { getVisibleEvents, getVisibleRestaurants, getRestaurantById } from "../../../server/storage.js";
-import { renderDietaryBadges } from "../../../shared/render.ts";
 import { deriveEventNeighborhood } from "../../../shared/catalog.ts";
 
 export const prerender = false;
@@ -78,21 +77,12 @@ const mapQuery = restaurant?.address
                 <div class="detailCardLabel">Opened</div>
                 <div class="detailCardValue">{restaurant.opened_date}</div>
               </div>
-              <div class="detailCard">
-                <div class="detailCardLabel">Dietary flags</div>
-                <div class="detailCardValue" set:html={renderDietaryBadges(restaurant.dietary_flags)}></div>
-              </div>
             </div>
 
             <div class="detailActions">
               {restaurant.source_url && (
                 <a class="detailAction" href={restaurant.source_url} target="_blank" rel="noopener noreferrer">
                   View source
-                </a>
-              )}
-              {restaurant.menu_url && (
-                <a class="detailAction" href={restaurant.menu_url} target="_blank" rel="noopener noreferrer">
-                  View menu
                 </a>
               )}
               {mapQuery && (

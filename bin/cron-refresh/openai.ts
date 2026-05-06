@@ -1,42 +1,6 @@
 import OpenAI from 'openai'
-import type { DietaryFlags } from '../../server/storage.js'
 import type { NewRestaurant } from './types.js'
 import { stripHtml } from './html.js'
-
-const DIETARY_FLAGS_SCHEMA: Record<string, unknown> = {
-  type: 'object',
-  properties: {
-    gluten_free: {
-      type: 'object',
-      properties: {
-        available: { type: 'boolean' },
-        confidence: { type: 'string', enum: ['confirmed', 'inferred'] },
-      },
-      required: ['available', 'confidence'],
-      additionalProperties: false,
-    },
-    vegan: {
-      type: 'object',
-      properties: {
-        available: { type: 'boolean' },
-        confidence: { type: 'string', enum: ['confirmed', 'inferred'] },
-      },
-      required: ['available', 'confidence'],
-      additionalProperties: false,
-    },
-    vegetarian: {
-      type: 'object',
-      properties: {
-        available: { type: 'boolean' },
-        confidence: { type: 'string', enum: ['confirmed', 'inferred'] },
-      },
-      required: ['available', 'confidence'],
-      additionalProperties: false,
-    },
-  },
-  required: ['gluten_free', 'vegan', 'vegetarian'],
-  additionalProperties: false,
-}
 
 const RESTAURANTS_SCHEMA: Record<string, unknown> = {
   type: 'object',
@@ -80,44 +44,6 @@ function getClient(): { chat: OpenAI['chat'] } {
   }
   if (!_client) _client = new OpenAI()
   return _client
-}
-
-export async function parseDietaryFlagsWithAI(
-  menuText: string,
-): Promise<DietaryFlags> {
-  const client = getClient()
-  const response = await client.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: [
-      {
-        role: 'user',
-        content:
-          'Analyze this menu text and identify available dietary options. ' +
-          'Use "confirmed" confidence when the option is explicitly labeled (e.g., "vegan", "gluten-free"), ' +
-          '"inferred" when implied (e.g., "dairy-free" implies vegan-friendly).\n\nMenu:\n' +
-          menuText.slice(0, 4000),
-      },
-    ],
-    response_format: {
-      type: 'json_schema',
-      json_schema: {
-        name: 'dietary_flags',
-        schema: DIETARY_FLAGS_SCHEMA,
-        strict: true,
-      },
-    },
-  })
-
-  const content = response.choices[0]?.message?.content
-  if (!content)
-    throw new Error('OpenAI returned empty response for dietary flag parsing')
-  try {
-    return JSON.parse(content) as DietaryFlags
-  } catch {
-    throw new Error(
-      `OpenAI returned non-JSON content for dietary flag parsing: ${content.slice(0, 100)}`,
-    )
-  }
 }
 
 export async function parseEaterArticleWithAI(

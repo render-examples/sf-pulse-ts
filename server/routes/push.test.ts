@@ -85,7 +85,6 @@ describe("push subscription endpoints", () => {
     assert.deepEqual(res.body.preferences, {
       neighborhoods: [],
       cuisines: [],
-      dietary_flags: [],
       event_categories: [],
     });
   });
@@ -106,7 +105,6 @@ describe("push subscription endpoints", () => {
         preferences: {
           neighborhoods: ["Mission"],
           cuisines: ["French"],
-          dietary_flags: ["vegan"],
           event_categories: ["music"],
         },
       });
@@ -114,7 +112,6 @@ describe("push subscription endpoints", () => {
     assert.deepEqual(res.body.preferences, {
       neighborhoods: ["Mission"],
       cuisines: ["French"],
-      dietary_flags: ["vegan"],
       event_categories: ["music"],
     });
   });

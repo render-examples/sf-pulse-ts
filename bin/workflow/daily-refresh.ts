@@ -16,14 +16,12 @@ import { fetchFamsfTask } from './fetch-famsf.js'
 import { fetchCalAcademyTask } from './fetch-cal-academy.js'
 import { searchEventsTask } from './search-events.js'
 import { applyDiscoveredItemsTask } from './apply-discovered-items.js'
-import { discoverMenusTask } from './discover-menus.js'
 
 export const dailyRefreshTask = task(
   { name: 'daily-refresh', timeoutSeconds: 600 },
   async function dailyRefresh(): Promise<{
     restaurants: number
     events: number
-    menus: { checked: number; found: number }
   }> {
     console.info(
       `[workflow] SF Pulse refresh — ${new Date().toISOString()}`,
@@ -138,10 +136,6 @@ export const dailyRefreshTask = task(
       console.info('[workflow] nothing new')
     }
 
-    // Phase 5: Menu discovery
-    console.info('[workflow] starting menu discovery...')
-    const menus = await discoverMenusTask()
-
-    return { restaurants: restaurants.length, events: events.length, menus }
+    return { restaurants: restaurants.length, events: events.length }
   },
 )

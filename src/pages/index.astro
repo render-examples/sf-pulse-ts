@@ -5,7 +5,6 @@ import scriptUrl from "../scripts/home.ts?url";
 import { serializeForInlineScript } from "../../server/security.js";
 import { getInitialData } from "../server/api/utils.js";
 import {
-  DIETARY_FLAG_DEFINITIONS,
   formatEventCategory,
   getEventCategoryOptions,
   getRestaurantCuisineOptions,
@@ -93,7 +92,7 @@ const eventCategoryOptions = getEventCategoryOptions(data.events);
             <div>
               <h2 class="pushPanelTitle">Personalized alerts</h2>
               <p class="pushPanelMeta">
-                Save neighborhoods, cuisines, dietary flags, and event categories for push delivery.
+                Save neighborhoods, cuisines, and event categories for push delivery.
               </p>
             </div>
           </div>
@@ -134,23 +133,6 @@ const eventCategoryOptions = getEventCategoryOptions(data.events);
                     data-value={value}
                   >
                     {value}
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            <section class="pushGroup">
-              <h3>Dietary flags</h3>
-              <div class="chipRow">
-                {DIETARY_FLAG_DEFINITIONS.map((diet) => (
-                  <button
-                    type="button"
-                    class="chip"
-                    data-push-chip
-                    data-field="dietary_flags"
-                    data-value={diet.key}
-                  >
-                    {diet.label}
                   </button>
                 ))}
               </div>
@@ -253,7 +235,6 @@ const eventCategoryOptions = getEventCategoryOptions(data.events);
                     <th>Name</th>
                     <th class="colNeighborhood">Neighborhood</th>
                     <th class="colCuisine">Cuisine</th>
-                    <th class="colDiet">Diet</th>
                     <th>Opened</th>
                   </tr>
                 </thead>

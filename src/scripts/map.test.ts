@@ -17,9 +17,6 @@ function makeRestaurant(overrides: Partial<Restaurant>): Restaurant {
     is_upcoming: false,
     highlight_kind: 'opening',
     source_url: null,
-    menu_url: null,
-    menu_checked_at: null,
-    dietary_flags: null,
     ...overrides,
   }
 }

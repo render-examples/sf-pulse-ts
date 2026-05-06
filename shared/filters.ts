@@ -2,10 +2,8 @@ import { todayUTC } from "./dates.ts";
 import {
   deriveEventCategory,
   deriveEventNeighborhood,
-  hasDietaryFlag,
 } from "./catalog.ts";
 import type {
-  DietaryFlagKey,
   Restaurant,
   SFEvent,
 } from "./types.ts";
@@ -14,7 +12,6 @@ export interface RestaurantFilters {
   query: string;
   neighborhoods: string[];
   cuisines: string[];
-  dietaryFlags: DietaryFlagKey[];
   upcomingOnly: boolean;
   fromDate: string;
   toDate: string;
@@ -38,7 +35,6 @@ export const DEFAULT_RESTAURANT_FILTERS: RestaurantFilters = {
   query: "",
   neighborhoods: [],
   cuisines: [],
-  dietaryFlags: [],
   upcomingOnly: false,
   fromDate: "",
   toDate: "",
@@ -85,10 +81,6 @@ export function parseHomeFilters(searchParams: URLSearchParams): HomeFilters {
       query: searchParams.get("r-q")?.trim() ?? "",
       neighborhoods: parseList(searchParams.get("r-neighborhood")),
       cuisines: parseList(searchParams.get("r-cuisine")),
-      dietaryFlags: parseList(searchParams.get("r-diet")).filter(
-        (value): value is DietaryFlagKey =>
-          value === "gluten_free" || value === "vegan" || value === "vegetarian",
-      ),
       upcomingOnly: searchParams.get("r-upcoming") === "1",
       fromDate: normalizeIsoDate(searchParams.get("r-from")),
       toDate: normalizeIsoDate(searchParams.get("r-to")),
@@ -113,9 +105,6 @@ export function serializeHomeFilters(filters: HomeFilters): URLSearchParams {
   }
   if (filters.restaurants.cuisines.length) {
     params.set("r-cuisine", filters.restaurants.cuisines.join(","));
-  }
-  if (filters.restaurants.dietaryFlags.length) {
-    params.set("r-diet", filters.restaurants.dietaryFlags.join(","));
   }
   if (filters.restaurants.upcomingOnly) params.set("r-upcoming", "1");
   if (filters.restaurants.fromDate) params.set("r-from", filters.restaurants.fromDate);
@@ -232,13 +221,6 @@ export function applyRestaurantFilters(
     }
 
     if (!matchesMultiSelect(filters.cuisines, restaurant.cuisine)) {
-      return false;
-    }
-
-    if (
-      filters.dietaryFlags.length > 0 &&
-      !filters.dietaryFlags.some((flag) => hasDietaryFlag(restaurant.dietary_flags, flag))
-    ) {
       return false;
     }
 

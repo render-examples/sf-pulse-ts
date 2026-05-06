@@ -24,4 +24,4 @@ export type NewEvent = {
   source_url: string | null;
 };
 
-export type { RawArticle, RawMenuPage } from "../../server/llm/types.js";
+export type { RawArticle } from "../../server/llm/types.js";
