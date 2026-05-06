@@ -307,6 +307,10 @@
   display: grid;
 }
 
+.page:has(#diagram:target) .main {
+  max-width: 1248px;
+}
+
 .diagramFrameWrap {
   min-height: 0;
   border: 1px solid var(--border);
