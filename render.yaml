@@ -1,7 +1,7 @@
 projects:
   - name: sf-pulse
     environments:
-      - name: Production
+      - name: production
         databases:
           - name: sf-pulse-db
             databaseName: sfpulse

@@ -274,8 +274,10 @@
   stroke-linejoin: round;
 }
 
-.page:not(:has(#events:target)) .tabRestaurants,
-.page:has(#events:target) .tabEvents {
+body:not(:has(:target)) .tabRestaurants,
+.page:has(#restaurants:target) .tabRestaurants,
+.page:has(#events:target) .tabEvents,
+.page:has(#diagram:target) .tabDiagram {
   background: var(--surface);
   color: var(--text);
   box-shadow: var(--shadow);
@@ -288,16 +290,41 @@
   overflow: hidden;
 }
 
-.eventsSection {
+.eventsSection,
+.diagramSection {
   display: none;
 }
 
-.page:has(#events:target) .restaurantsSection {
+.page:has(#events:target) .restaurantsSection,
+.page:has(#diagram:target) .restaurantsSection {
   display: none;
 }
 
 .page:has(#events:target) .eventsSection {
   display: grid;
+}
+
+.page:has(#diagram:target) .diagramSection {
+  display: grid;
+}
+
+.page:has(#diagram:target) .main {
+  max-width: min(1800px, calc(100vw - 40px));
+}
+
+.diagramFrameWrap {
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #0a0a0a;
+}
+
+.diagramFrame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
 }
 
 .sectionHeader {
