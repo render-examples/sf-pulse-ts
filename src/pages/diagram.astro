@@ -1,0 +1,28 @@
+---
+import WorkflowDiagram from '../components/diagram/WorkflowDiagram.tsx'
+import '../components/diagram/tailwind.css'
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SF Pulse — Workflow Diagram</title>
+    <meta
+      name="description"
+      content="Visualization of the SF Pulse daily refresh workflow."
+    />
+    <style is:global>
+      html,
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: #0a0a0a;
+      }
+    </style>
+  </head>
+  <body>
+    <WorkflowDiagram client:only="react" />
+  </body>
+</html>

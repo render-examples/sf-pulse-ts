@@ -36,7 +36,8 @@
       "Bash(npm install)",
       "Bash(npm run dev:*)",
       "Bash(render:*)",
-      "mcp__plugin_serena_serena__find_symbol"
+      "mcp__plugin_serena_serena__find_symbol",
+      "Bash(python3 *)"
     ]
   }
 }
