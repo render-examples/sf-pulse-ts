@@ -9,3 +9,5 @@ dist/
 .env
 .env.local
 .worktrees/
+.DS_Store
+example-command.txt
