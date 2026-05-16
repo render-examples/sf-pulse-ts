@@ -7,6 +7,7 @@ export const fetchEaterSfTask = task(
     name: 'fetch-eater-sf',
     retry: { maxRetries: 3, waitDurationMs: 2000, backoffScaling: 2 },
     timeoutSeconds: 120,
+    plan: 'starter',
   },
   async function fetchEaterSf(): Promise<RawArticle[]> {
     console.info('[workflow] fetching Eater SF...')
